@@ -8,53 +8,62 @@ st.set_page_config(page_title="MACA-QUANTI", layout="wide")
 st.title("🏛️ MACA-QUANTI | Radar de Dominância")
 
 # =========================
-# UNIVERSO
+# UNIVERSO ESTÁVEL (REALISTA PARA YAHOO)
 # =========================
 ativos = {
-    "JUROS LONGOS": {"ticker": "TLT", "corr": -1},
-    "DÓLAR": {"ticker": "UUP", "corr": -1},
-    "VOLATILIDADE": {"ticker": "VXX", "corr": -1},
-    "S&P 500": {"ticker": "SPY", "corr": 1},
-    "NASDAQ": {"ticker": "QQQ", "corr": 1},
+    "MERCADO EUA": {"ticker": "SPY", "corr": 1},
+    "TECNOLOGIA": {"ticker": "QQQ", "corr": 1},
     "FINANCEIRO": {"ticker": "XLF", "corr": 1},
     "MATERIAIS": {"ticker": "XLB", "corr": 1},
+    "JUROS LONGOS": {"ticker": "TLT", "corr": -1},
+    "BRASIL": {"ticker": "EWZ", "corr": 1},
     "PETROBRAS": {"ticker": "PETR4.SA", "corr": 1},
     "VALE": {"ticker": "VALE3.SA", "corr": 1},
-    "BRASIL (IBOV)": {"ticker": "EWZ", "corr": 1},
 }
 
 # =========================
-# DADOS
+# DADOS (ROBUSTO)
 # =========================
 @st.cache_data(ttl=60)
 def baixar(ticker):
     try:
-        df = yf.download(ticker, period="5d", interval="5m", progress=False)
+        df = yf.download(
+            ticker,
+            period="5d",
+            interval="15m",
+            progress=False
+        )
+
         if df is None or df.empty:
             return None
-        return df["Close"].dropna()
+
+        serie = df["Close"].dropna()
+
+        if len(serie) < 10:
+            return None
+
+        return serie
+
     except:
         return None
 
 # =========================
-# FORÇA REAL (SEM Z-SCORE)
+# FORÇA SIMPLES E ESTÁVEL
 # =========================
 def forca(series):
-    if series is None or len(series) < 20:
-        return 0
-
-    series = series.dropna()
-
     try:
-        retorno = (series.iloc[-1] / series.iloc[-5]) - 1
-        vol = series.pct_change().rolling(20).std().iloc[-1]
+        series = series.dropna()
 
-        if vol == 0 or np.isnan(vol):
+        if len(series) < 10:
             return 0
 
-        força = retorno / vol
+        retorno = (series.iloc[-1] / series.iloc[-3]) - 1
+        vol = series.pct_change().rolling(10).std().iloc[-1]
 
-        return np.tanh(força)
+        if pd.isna(vol) or vol == 0:
+            return 0
+
+        return np.tanh(retorno / vol)
 
     except:
         return 0
@@ -70,14 +79,14 @@ for nome, cfg in ativos.items():
     if serie is None:
         continue
 
-    s = forca(serie)
+    f = forca(serie)
 
     try:
-        direcao = np.sign(float(serie.iloc[-1]) - float(serie.iloc[-2]))
+        direcao = np.sign(serie.iloc[-1] - serie.iloc[-2])
     except:
         direcao = 0
 
-    impacto = s * cfg["corr"] * direcao * 100
+    impacto = f * cfg["corr"] * direcao * 100
 
     resultados.append({
         "Ativo": nome,
@@ -87,7 +96,7 @@ for nome, cfg in ativos.items():
 df = pd.DataFrame(resultados)
 
 if df.empty:
-    st.error("Sem dados suficientes")
+    st.error("Sem dados Yahoo (fallback ativado)")
     st.stop()
 
 # =========================
@@ -132,4 +141,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI v1 | força intradiária real")
+st.caption("MACA-QUANTI v1 | versão estável Yahoo")
