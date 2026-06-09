@@ -2,24 +2,29 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 # Configuração
-st.set_page_config(page_title="MACA-QUANTI ELITE v4.1", layout="centered")
-st.title("🍎 MACA-QUANTI ELITE v4.1")
+st.set_page_config(page_title="MACA-QUANTI ELITE v5.0", layout="centered")
+st.title("🍎 MACA-QUANTI ELITE v5.0")
+
+# Inicialização de memória para o Histórico de Liderança
+if 'historico_lideranca' not in st.session_state:
+    st.session_state.historico_lideranca = []
 
 vies_ativos = {
-    "FIXA11.SA": {"nome": "DI FUTURO", "corr": -1.0, "peso": 1.0, "grupo": "JUROS"},
-    "BRL=X":     {"nome": "DÓLAR",     "corr": -1.0, "peso": 0.9, "grupo": "DÓLAR"},
-    "FIND11.SA": {"nome": "IFNC",      "corr":  1.0, "peso": 0.8, "grupo": "FLUXO INTERNO"},
-    "EWZ":       {"nome": "EWZ",       "corr":  1.0, "peso": 0.7, "grupo": "FLUXO INTERNO"},
-    "ES=F":      {"nome": "S&P500",    "corr":  1.0, "peso": 0.6, "grupo": "EXTERIOR"},
-    "^VIX":      {"nome": "VIX",       "corr": -1.0, "peso": 0.5, "grupo": "EXTERIOR"},
-    "NQ=F":      {"nome": "NASDAQ",    "corr":  1.0, "peso": 0.4, "grupo": "EXTERIOR"},
+    "FIXA11.SA": {"nome": "JUROS LONGOS", "corr": -1.0, "peso": 1.0, "grupo": "JUROS"},
+    "BRL=X":     {"nome": "DÓLAR",        "corr": -1.0, "peso": 0.9, "grupo": "DÓLAR"},
+    "FIND11.SA": {"nome": "IFNC",         "corr":  1.0, "peso": 0.8, "grupo": "FLUXO INTERNO"},
+    "EWZ":       {"nome": "EWZ",          "corr":  1.0, "peso": 0.7, "grupo": "FLUXO INTERNO"},
+    "ES=F":      {"nome": "S&P500",       "corr":  1.0, "peso": 0.6, "grupo": "EXTERIOR"},
+    "^VIX":      {"nome": "VIX",          "corr": -1.0, "peso": 0.5, "grupo": "EXTERIOR"},
+    "NQ=F":      {"nome": "NASDAQ",       "corr":  1.0, "peso": 0.4, "grupo": "EXTERIOR"},
 }
 
 def get_stats(cod):
     df = yf.download(cod, period="60d", interval="1d", progress=False)
-    if df.empty: return 0, 0, 0
+    if df.empty: return 0, 0
     c = pd.to_numeric(df['Close'].iloc[:, 0], errors='coerce').dropna()
     ma20 = c.rolling(20).mean().iloc[-1]
     std20 = max(c.rolling(20).std().iloc[-1], 0.0001)
@@ -30,50 +35,21 @@ def get_stats(cod):
     persistencia = abs(c.iloc[-1] - c.shift(5).iloc[-1]) / std20
     aceleracao = (c.pct_change(1).iloc[-1]) / (c.pct_change(10).rolling(10).mean().iloc[-1] + 0.0001)
     conviccao = np.clip(((vol_rel * 0.3) + (persistencia * 0.4) + (abs(aceleracao) * 0.3)) * 100, 10, 95)
-    ret5d = abs(c.pct_change(5).iloc[-1])
-    return z, conviccao, ret5d
+    return z, conviccao
 
 # Processamento
 dados = []
 for cod, cfg in vies_ativos.items():
-    z, conv, r5 = get_stats(cod)
+    z, conv = get_stats(cod)
     score = 100 * np.tanh(z * cfg['corr'] * 0.5)
-    dom = abs(z) * cfg['peso'] * (conv / 100) * (1 + r5)
+    # Fórmula simplificada (Opção A)
+    dom = abs(z) * cfg['peso'] * (conv / 100)
     dados.append({"Ativo": cfg['nome'], "Grupo": cfg['grupo'], "Dominancia": dom, "Score": score, "Corr": cfg['corr']})
 
 df = pd.DataFrame(dados)
 df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
 
-# 1. Painel Macro (Visualização por Grupo Restaurada)
+# 1. Painel Macro
 st.subheader("🌐 Forças Macro")
 df_macro = df.groupby("Grupo").agg({"Dominancia": "sum", "Score": lambda x: np.average(x, weights=df.loc[x.index, 'Dominancia'])}).reset_index()
-df_macro['Pct_Dominancia'] = (df_macro['Dominancia'] / df_macro['Dominancia'].sum()) * 100
-df_macro = df_macro.sort_values("Dominancia", ascending=False)
-
-st.metric("DOMINÂNCIA MACRO 🎯", df_macro.iloc[0]['Grupo'])
-st.dataframe(df_macro.style.format({"Pct_Dominancia": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True, use_container_width=True)
-
-# 2. Índice HHI (Fragmentação)
-hhi = (df['Pct_Dominancia'] / 100).pow(2).sum() * 10000
-frag_hhi = (1 - (hhi/10000)) * 100
-st.write(f"**Índice de Fragmentação (HHI):** {frag_hhi:.1f} | {'Concentrado' if hhi > 2500 else 'Disperso'}")
-
-# 3. Consenso de Mercado
-st.subheader("⚖️ Consenso de Mercado")
-c_alta = len(df[df['Score'] > 0])
-c_baixa = len(df[df['Score'] < 0])
-col_c1, col_c2 = st.columns(2)
-col_c1.metric("Pressionando ALTA", c_alta)
-col_c2.metric("Pressionando BAIXA", c_baixa)
-
-# 4. Hierarquia e Alinhamento
-st.write("---")
-st.subheader("🎯 Hierarquia de Drivers")
-top_driver = df.sort_values("Dominancia", ascending=False).iloc[0]['Ativo']
-st.write(f"**Driver Atual:** {top_driver}")
-alinh = np.average(df['Score'], weights=df['Dominancia'])
-st.write(f"### **📊 ALINHAMENTO: {abs(alinh):.1f}%**")
-st.progress(min(abs(alinh) / 100, 1))
-
-# 5. Tabela Detalhada
-st.dataframe(df[['Ativo', 'Grupo', 'Pct_Dominancia', 'Score']].rename(columns={'Pct_Dominancia': 'Dom %'}).style.format({"Dom %": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True, use_container_width=True)
+df_macro['Pct_Dominancia
