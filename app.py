@@ -3,8 +3,16 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="MACA-QUANTI ELITE v8.9", layout="centered")
-st.title("🏛️ MACA-QUANTI ELITE v8.9")
+# Configuração de Layout
+st.set_page_config(page_title="MACA-QUANTI ELITE v9.0", layout="wide")
+st.title("🏛️ MACA-QUANTI ELITE v9.0 | Motor de Regimes")
+
+# Separando blocos para leitura hierárquica
+blocos_macro = {
+    "GLOBAL": ["ES=F", "NQ=F", "^VIX"],
+    "BRASIL": ["EWZ", "FIND11.SA"],
+    "MACRO":  ["FIXA11.SA", "BRL=X"]
+}
 
 vies_ativos = {
     "FIXA11.SA": {"nome": "JUROS", "corr": -1.0, "peso": 1.2},
@@ -27,56 +35,40 @@ def get_motor_profissional():
             if isinstance(c, pd.DataFrame): c = c.iloc[:, -1]
             z = (c.iloc[-1] - c.rolling(20).mean().iloc[-1]) / max(c.rolling(20).std().iloc[-1], 0.0001)
             score = np.tanh(z * 0.5) * 100
-            res.append({"Ativo": cfg['nome'], "Impacto": score * cfg['corr'] * cfg['peso']})
+            res.append({"Ativo": cfg['nome'], "Impacto": score * cfg['corr'] * cfg['peso'], "Ticker": cod})
         except Exception: continue
-    return pd.DataFrame(res) if res else pd.DataFrame(columns=["Ativo", "Impacto"])
+    return pd.DataFrame(res)
 
 df = get_motor_profissional()
 if df.empty: st.stop()
 
-# 1. HHI (Concentração de fluxo)
+# Cálculos de Dominância
 df["Abs_Impacto"] = df["Impacto"].abs()
-hhi = (df["Abs_Impacto"] / (df["Abs_Impacto"].sum() + 1e-9)) ** 2
-hhi_sum = hhi.sum()
-
-# 2. Força Total Normalizada
+hhi_sum = np.sum((df["Abs_Impacto"] / df["Abs_Impacto"].sum())**2)
 forca_total = df['Impacto'].sum() / (df["Abs_Impacto"].sum() + 1e-9)
 
-# 3. Driver Líder
-driver_lider = df.loc[df["Abs_Impacto"].idxmax(), "Ativo"]
+# Detecção de Conflito (Divergência Macro)
+# Se S&P500 e VIX (ativos globais) movem na mesma direção, temos conflito
+vix_score = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0]
+spx_score = df.loc[df["Ativo"] == "S&P500", "Impacto"].values[0]
+tem_conflito = (spx_score > 0 and vix_score > 0)
 
-# 4. Regime
-vix_score = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0] if "VIX" in df["Ativo"].values else 0
-if vix_score > 10 and forca_total < 0:
-    regime = "Risk-Off"
-elif hhi_sum < 0.25:
-    regime = "Compressão"
-elif forca_total > 0:
-    regime = "Direcional Altista"
-else:
-    regime = "Direcional Baixista"
+# Motor de Regime
+if tem_conflito: regime = "🚨 ALERTA: Conflito Macro"
+elif vix_score > 20: regime = "Risk-Off Global"
+elif hhi_sum > 0.4: regime = "Dominância Concentrada"
+elif forca_total > 0.3: regime = "Risk-On (Direcional)"
+else: regime = "Compressão / Neutro"
 
-# 5. UI (Bússola + Contexto Institucional)
-st.subheader("Bússola Operacional")
-col1, col2 = st.columns(2)
+# UI Hierárquica
+col1, col2, col3 = st.columns(3)
 col1.metric("Regime", regime)
-col2.metric("Driver", driver_lider)
+col2.metric("Driver Dominante", df.loc[df["Abs_Impacto"].idxmax(), "Ativo"])
+col3.metric("Concentração (HHI)", f"{hhi_sum:.2f}")
 
-if forca_total > 0: st.success(f"### 🟢 COMPRA | Força: {forca_total:.2f}")
-else: st.error(f"### 🔴 VENDA | Força: {abs(forca_total):.2f}")
+st.divider()
 
-# Tabela Vertical de Forças
-def formatar_tabela(df):
-    return df.style.map(
-        lambda x: 'background-color: #ffcccc; color: #cc0000; font-weight: bold' if x < 0 else 'background-color: #ccffcc; color: #006600; font-weight: bold', 
-        subset=['Impacto']
-    )
-
-st.dataframe(
-    formatar_tabela(df[['Ativo', 'Impacto']].sort_values('Impacto', ascending=False)),
-    use_container_width=True,
-    hide_index=True
-)
-
-# 6. Rodapé com HHI
-st.caption(f"🟢 Verde: alta | 🔴 Vermelho: baixa | HHI: {hhi_sum:.2f}")
+# Exibição por blocos
+col_left, col_right = st.columns([1, 2])
+with col_left:
+    st.subheader("Bússola WIN
