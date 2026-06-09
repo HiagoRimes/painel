@@ -3,8 +3,9 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="MACA-QUANTI ELITE v8.3", layout="centered")
-st.title("🏛️ MACA-QUANTI ELITE v8.3")
+# Layout wide para aproveitar melhor as colunas
+st.set_page_config(page_title="MACA-QUANTI ELITE v8.4", layout="wide")
+st.title("🏛️ MACA-QUANTI ELITE v8.4")
 
 vies_ativos = {
     "FIXA11.SA": {"nome": "JUROS", "corr": -1.0, "peso": 1.2},
@@ -42,21 +43,10 @@ spx = df.loc[df['Ativo']=='S&P500', 'Score'].values[0] if 'S&P500' in df['Ativo'
 is_risk_off = (vix > 20) and (spx < 0)
 tem_conflito = (df['Impacto'].max() > 0) and (df['Impacto'].min() < 0)
 
-# UI: Camada de Decisão (Foco)
-col1, col2 = st.columns(2)
-regime = "Risk-Off (Stress)" if is_risk_off else ("Compressão" if tem_conflito else "Direcional")
-col1.metric("Regime Atual", regime)
-col2.metric("Driver Líder", df.loc[df['Abs_Impacto'].idxmax(), 'Ativo'])
+# Estrutura em 3 Colunas principais
+col_diag, col_bussola, col_grafico = st.columns([1, 1, 2])
 
-if forca_total > 0.3: st.success(f"### 🟢 COMPRA | Força: {forca_total:.2f}")
-elif forca_total < -0.3: st.error(f"### 🔴 VENDA | Força: {abs(forca_total):.2f}")
-else: st.warning(f"### ⚠️ NEUTRO | Força: {forca_total:.2f}")
-
-# UI: Camada de Diagnóstico (O "Não estar cego")
-with st.expander("🔍 Diagnóstico Macro Detalhado (Por que esta decisão?)"):
-    st.write("Visualização de forças individuais (Quanto cada driver puxa o WIN):")
-    st.bar_chart(df.set_index('Ativo')['Impacto'])
-    st.table(df[['Ativo', 'Score']].sort_values('Score', ascending=False))
-    st.caption("Score > 0 favorece alta do WIN | Score < 0 favorece baixa do WIN")
-
-st.info("Atenção: Use a bússola para o sinal e o diagnóstico para a confirmação.")
+# Coluna 1: Diagnóstico
+with col_diag:
+    st.subheader("Diagnóstico")
+    regime = "Risk-Off (Stress)" if is_
