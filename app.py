@@ -48,4 +48,59 @@ driver_lider = df.sort_values("Impacto", ascending=False).head(1)["Ativo"].value
 
 # 4. Detecção de Conflito Macro (Corrigida)
 vix_score = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0] if "VIX" in df["Ativo"].values else 0
-spx_score = df.loc[df["Ativo"]
+spx_score = df.loc[df["Ativo"] == "S&P500", "Impacto"].values[0] if "S&P500" in df["Ativo"].values else 0
+tem_conflito = (spx_score > 0 and vix_score > 10)
+
+# 5. Motor de Regime (Robustez v9.2)
+if tem_conflito:
+    regime = "🚨 Conflito Macro"
+elif vix_score > 15 and spx_score < 0:
+    regime = "Risk-Off Global"
+elif hhi_sum > 0.4:
+    regime = "Dominância Concentrada"
+elif hhi_sum < 0.25:
+    regime = "Compressão / Dispersão"
+elif forca_total > 0.3:
+    regime = "Risk-On"
+else:
+    regime = "Neutro Estrutural"
+
+# UI Hierárquica
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Regime", regime)
+col2.metric("Driver", driver_lider)
+col3.metric("Concentração", f"{hhi_sum:.2f}")
+col4.metric("Qualidade Regime", f"{qualidade_regime:.2f}")
+
+st.divider()
+
+col_left, col_right = st.columns([1, 2])
+with col_left:
+    st.subheader("Bússola WIN")
+    if forca_total > 0.2: st.success(f"### 🟢 COMPRA ({forca_total:.2f})")
+    elif forca_total < -0.2: st.error(f"### 🔴 VENDA ({abs(forca_total):.2f})")
+    else: st.warning(f"### ⚠️ NEUTRO")
+    
+with col_right:
+    st.subheader("Mapa de Calor Institucional")
+    def formatar_tabela(data):
+        return data.style.map(
+            lambda x: 'background-color: #ffcccc; color: #cc0000; font-weight: bold' if x < 0 
+            else 'background-color: #ccffcc; color: #006600; font-weight: bold', 
+            subset=['Impacto']
+        )
+    
+    st.dataframe(
+        formatar_tabela(df[['Ativo', 'Impacto']].sort_values('Impacto', ascending=False)), 
+        use_container_width=True,
+        hide_index=True
+    )
+
+with st.expander("📖 Legenda Institucional"):
+    st.markdown("""
+    * **Regime**: `Risk-Off` (Stress global), `Dominância Concentrada` (Mercado puxado por poucos ativos), `Risk-On` (Direcional alinhado).
+    * **HHI**: `> 0.4` (Mercado instável/dependente), `< 0.25` (Saudável/disperso).
+    * **Qualidade Regime**: Próximo de 1 é dispersão saudável; próximo de 0 é concentração de risco.
+    """)
+
+st.caption(f"v9.2 | Regime Quality: {qualidade_regime:.2f} | HHI: {hhi_sum:.2f}")
