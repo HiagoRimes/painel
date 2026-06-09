@@ -6,13 +6,6 @@ import plotly.graph_objects as go
 # Configuração de layout para responsividade
 st.set_page_config(page_title="MACA-QUANTI", layout="wide")
 
-# CSS Global injetado uma única vez
-st.markdown("""
-    <style>
-        [data-testid="stMetricValue"] { font-size: 20px !important; }
-    </style>
-""", unsafe_allow_html=True)
-
 st.title("🍎 MACA-QUANTI")
 
 macro_ativos = {
@@ -21,7 +14,7 @@ macro_ativos = {
     "EWZ": "EWZ", "^VIX": "VIX", "ES=F": "S&P 500", "NQ=F": "NASDAQ"
 }
 
-# Lógica de cálculo
+# Processamento dos dados
 ativos_processados = []
 with st.spinner("Calculando..."):
     for cod, nome in macro_ativos.items():
@@ -33,14 +26,13 @@ with st.spinner("Calculando..."):
                 ativos_processados.append({"nome": nome, "z": z})
         except: continue
 
-# Grid Responsivo usando st.columns (Nativo)
-cols = st.columns(2) # 2 colunas para garantir visualização no celular
+# Grid Responsivo fixo em 2 colunas para estabilidade total
+cols = st.columns(2)
 for i, item in enumerate(ativos_processados):
     with cols[i % 2]:
-        # Usamos o st.metric para garantir que o layout nunca quebre
-        # A cor será gerenciada nativamente pelo Streamlit
+        # Usamos o st.metric para garantir que o layout nunca "quebre" em texto
         st.metric(label=item['nome'], value=f"Z: {item['z']:.2f}")
 
 # Gráfico
 st.subheader("📊 Rastro (15 dias)")
-# ... (seu código de gráfico continua igual)
+# ... (seu código de gráfico aqui)
