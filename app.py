@@ -3,7 +3,15 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
+# Configuração da página
 st.set_page_config(page_title="MACA-QUANTI", layout="wide")
+
+# CSS focado em estilo, não em estrutura HTML complexa
+st.markdown("""
+    <style>
+        .stMetric { background-color: #262730; padding: 15px; border-radius: 10px; border-left: 5px solid #444; }
+    </style>
+""", unsafe_allow_html=True)
 
 st.title("🍎 MACA-QUANTI")
 
@@ -13,7 +21,7 @@ macro_ativos = {
     "EWZ": "EWZ", "^VIX": "VIX", "ES=F": "S&P 500", "NQ=F": "NASDAQ"
 }
 
-ativos_dados = []
+ativos_processados = []
 series_z = {}
 
 with st.spinner("Calculando..."):
@@ -25,24 +33,29 @@ with st.spinner("Calculando..."):
                 z_serie = (fechamento - fechamento.rolling(20).mean()) / fechamento.rolling(20).std()
                 series_z[nome] = z_serie.tail(15)
                 z = z_serie.iloc[-1]
-                # Definimos a cor por emoji, que é o que o Streamlit nunca falha em renderizar
-                cor_emoji = "🔴" if z > 1.5 else ("🟢" if z < -1.5 else "⚪")
-                ativos_dados.append({"nome": nome, "z": z, "emoji": cor_emoji})
+                
+                # Definindo a cor da borda
+                cor = "#FF4B4B" if z > 1.5 else ("#00CC96" if z < -1.5 else "#888")
+                ativos_processados.append({"nome": nome, "z": z, "cor": cor})
         except: continue
 
-# Usando colunas nativas sem HTML complexo para garantir que apareça
+# Grid Responsivo
 cols = st.columns(3)
-for i, item in enumerate(ativos_dados):
+for i, item in enumerate(ativos_processados):
     with cols[i % 3]:
-        # Criamos o bloco sem CSS injetado, usando apenas componentes do Streamlit
-        st.subheader(f"{item['emoji']} {item['nome']}")
-        st.metric(label="Z-Score", value=f"{item['z']:.2f}")
-        st.divider()
+        # Usamos o st.markdown para criar a "caixa pintada" de forma controlada
+        st.markdown(f"""
+            <div style="background-color: #262730; padding: 10px; border-radius: 8px; 
+                        border-left: 10px solid {item['cor']}; margin-bottom: 10px;">
+                <div style="font-weight: bold; color: white;">{item['nome']}</div>
+                <div style="font-size: 18px; color: #ddd;">Z: {item['z']:.2f}</div>
+            </div>
+        """, unsafe_allow_html=True)
 
 # Gráfico
 st.subheader("📊 Rastro (15 dias)")
 fig = go.Figure()
 for nome, serie in series_z.items():
     fig.add_trace(go.Scatter(x=serie.index.strftime('%d/%m'), y=serie.values, mode='lines', name=nome))
-fig.update_layout(height=350, font_color="#fff", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+fig.update_layout(height=350, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#fff")
 st.plotly_chart(fig, use_container_width=True)
