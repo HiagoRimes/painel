@@ -8,7 +8,7 @@ st.set_page_config(page_title="MACA-QUANTI", layout="wide")
 st.title("🏛️ MACA-QUANTI | Força de Correlação")
 
 # =========================
-# UNIVERSO (SEU SISTEMA)
+# UNIVERSO
 # =========================
 ativos = {
     "JUROS": {"ticker": "TLT", "corr": -1},
@@ -34,37 +34,34 @@ def load(ticker):
         return None
 
 # =========================
-# FORÇA DE MOVIMENTO (AJUSTADA PARA NÃO ZERAR)
+# FORÇA
 # =========================
 def force(series):
     if series is None or len(series) < 10:
-        return 0
+        return 0.0
 
     try:
         series = series.dropna()
 
-        # retorno curto + médio (evita ruído extremo)
         r1 = (series.iloc[-1] / series.iloc[-2]) - 1
         r5 = (series.iloc[-1] / series.iloc[-5]) - 1
 
-        # suavização (isso evita tudo virar zero)
         raw = (0.7 * r1 + 0.3 * r5) * 100
 
-        # normalização leve por volatilidade recente
         vol = series.pct_change().rolling(10).std().iloc[-1]
 
         if pd.isna(vol) or vol == 0:
-            return raw
+            return float(raw)
 
-        return raw / (vol * 100 + 1e-9)
+        return float(raw / (vol * 100 + 1e-9))
 
     except:
-        return 0
+        return 0.0
 
 # =========================
 # PROCESSAMENTO
 # =========================
-result = []
+rows = []
 
 for name, cfg in ativos.items():
 
@@ -75,28 +72,32 @@ for name, cfg in ativos.items():
     f = force(s)
 
     try:
-        direction = np.sign(s.iloc[-1] - s.iloc[-2])
+        direction = np.sign(float(s.iloc[-1]) - float(s.iloc[-2]))
     except:
         direction = 0
 
-    impact = f * cfg["corr"] * direction * 100
+    impact = float(f) * cfg["corr"] * float(direction) * 100
 
-    result.append({
+    # GARANTIA DE TIPO NUMÉRICO (ESSENCIAL)
+    rows.append({
         "Ativo": name,
-        "Impacto": impact
+        "Impacto": float(impact)
     })
 
-df = pd.DataFrame(result)
+df = pd.DataFrame(rows)
 
 if df.empty:
     st.error("Sem dados disponíveis")
     st.stop()
 
+# 🔥 FORÇA CONVERSÃO FINAL (SEGURANÇA EXTRA)
+df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
+
 # =========================
-# PRESSÃO AGREGADA
+# PRESSÃO
 # =========================
-buy = df[df["Impacto"] > 0]["Impacto"].sum()
-sell = abs(df[df["Impacto"] < 0]["Impacto"].sum())
+buy = df.loc[df["Impacto"] > 0, "Impacto"].sum()
+sell = abs(df.loc[df["Impacto"] < 0, "Impacto"].sum())
 
 total = buy + sell + 1e-9
 
@@ -134,4 +135,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI | correlação + força relativa")
+st.caption("MACA-QUANTI | correlação estabilizada")
