@@ -4,10 +4,11 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-# Configuração
+# Configuração da página
 st.set_page_config(page_title="MACA-QUANTI ELITE v5.1", layout="centered")
 st.title("🍎 MACA-QUANTI ELITE v5.1")
 
+# Inicialização de memória para o Histórico de Liderança
 if 'historico_lideranca' not in st.session_state:
     st.session_state.historico_lideranca = []
 
@@ -43,7 +44,7 @@ for cod, cfg in vies_ativos.items():
     score = 100 * np.tanh(z * cfg['corr'] * 0.5)
     sentido = "🟢 ALTA" if score > 0 else "🔴 BAIXA"
     dom = abs(z) * cfg['peso'] * (conv / 100)
-    dados.append({"Ativo": cfg['nome'], "Grupo": cfg['grupo'], "Dominancia": dom, "Score": score, "Sentido": sentido})
+    dados.append({"Ativo": cfg['nome'], "Grupo": cfg['grupo'], "Dominancia": dom, "Score": score, "Corr": cfg['corr'], "Sentido": sentido, "Conviccao": conv})
 
 df = pd.DataFrame(dados)
 df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
@@ -57,6 +58,7 @@ df_macro = df.groupby("Grupo").agg(
 df_macro['Pct_Dominancia'] = (df_macro['Dominancia'] / df_macro['Dominancia'].sum()) * 100
 df_macro = df_macro.sort_values("Dominancia", ascending=False)
 
+# Driver Atual
 driver_atual = df.sort_values("Dominancia", ascending=False).iloc[0]
 st.metric(f"DRIVER ATUAL: {driver_atual['Ativo']} ({driver_atual['Sentido']})", f"{driver_atual['Pct_Dominancia']:.0f}%")
 st.dataframe(df_macro.style.format({"Pct_Dominancia": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True)
@@ -87,5 +89,5 @@ alinh = np.average(df['Score'], weights=df['Dominancia'])
 st.write(f"### **📊 ALINHAMENTO: {abs(alinh):.1f}%**")
 st.progress(min(abs(alinh) / 100, 1))
 
-# 5. Tabela Detalhada com Sentido
-st.dataframe(df[['Ativo', 'Grupo', 'Pct_Dominancia', 'Sentido', 'Score']].rename(columns={'Pct_Dominancia': 'Dom %'}).style.format({"Dom %": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True)
+# 5. Tabela Detalhada (Preservando todas as colunas anteriores)
+st.dataframe(df[['Ativo', 'Grupo', 'Pct_Dominancia', 'Conviccao', 'Sentido', 'Score']].rename(columns={'Pct_Dominancia': 'Dom %'}).style.format({"Dom %": "{:.1f}%", "Conviccao": "{:.0f}", "Score": "{:.0f}"}), hide_index=True)
