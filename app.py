@@ -4,116 +4,118 @@ import pandas as pd
 import numpy as np
 
 # =========================
-# CONFIG BLOOMBERG STYLE
+# CONFIGURAÇÃO
 # =========================
-st.set_page_config(page_title="MACA-QUANTI v13.0", layout="wide")
+st.set_page_config(page_title="MACA-QUANTI v14.0", layout="wide")
 
 st.markdown(
-    "<h2 style='text-align:center;'>MACA-QUANTI | MARKET DESK</h2>",
+    "<h2 style='text-align:center;'>MACA-QUANTI | MESA INSTITUCIONAL</h2>",
     unsafe_allow_html=True
 )
 
 # =========================
-# UNIVERSE (CLEAN LABELS)
+# UNIVERSO (PORTUGUÊS TOTAL)
 # =========================
-assets = {
-    "FIXA11.SA": {"name": "RATES", "label": "JUROS", "corr": -1},
-    "BRL=X":     {"name": "FX", "label": "USD", "corr": -1},
-    "FIND11.SA": {"name": "EQ", "label": "FIN", "corr": 1},
-    "EWZ":       {"name": "EQ", "label": "BRL EQ", "corr": 1},
-    "ES=F":      {"name": "EQ", "label": "SPX", "corr": 1},
-    "NQ=F":      {"name": "EQ", "label": "NDX", "corr": 1},
-    "^VIX":      {"name": "VOL", "label": "VIX", "corr": -1},
+ativos = {
+    "FIXA11.SA": {"nome": "JUROS LONGOS", "grupo": "JUROS", "corr": -1},
+    "BRL=X":     {"nome": "DÓLAR AMERICANO", "grupo": "CÂMBIO", "corr": -1},
+    "FIND11.SA": {"nome": "SETOR FINANCEIRO", "grupo": "AÇÕES", "corr": 1},
+    "EWZ":       {"nome": "BOLSA BRASIL", "grupo": "AÇÕES", "corr": 1},
+    "ES=F":      {"nome": "BOLSA ESTADOS UNIDOS", "grupo": "AÇÕES", "corr": 1},
+    "NQ=F":      {"nome": "TECNOLOGIA ESTADOS UNIDOS", "grupo": "AÇÕES", "corr": 1},
+    "^VIX":      {"nome": "VOLATILIDADE DO MERCADO", "grupo": "RISCO", "corr": -1},
 }
 
 # =========================
-# ENGINE
+# MOTOR
 # =========================
 @st.cache_data(ttl=60)
-def engine():
-    rows = []
+def motor():
+    linhas = []
 
-    for k, v in assets.items():
-        df = yf.download(k, period="60d", interval="1d", progress=False)
+    for codigo, info in ativos.items():
+        df = yf.download(codigo, period="60d", interval="1d", progress=False)
         if df.empty:
             continue
 
-        c = df["Close"]
-        if isinstance(c, pd.DataFrame):
-            c = c.iloc[:, 0]
+        serie = df["Close"]
+        if isinstance(serie, pd.DataFrame):
+            serie = serie.iloc[:, 0]
 
-        ma = c.rolling(20).mean().iloc[-1]
-        std = c.rolling(20).std().iloc[-1]
+        media = serie.rolling(20).mean().iloc[-1]
+        desvio = serie.rolling(20).std().iloc[-1]
 
-        z = (c.iloc[-1] - ma) / max(std, 1e-9)
-        impact = np.tanh(z) * v["corr"]
+        z = (serie.iloc[-1] - media) / max(desvio, 1e-9)
+        impacto = np.tanh(z) * info["corr"]
 
-        rows.append({
-            "GROUP": v["name"],
-            "ASSET": v["label"],
-            "IMPACT": impact
+        linhas.append({
+            "Ativo": info["nome"],
+            "Grupo": info["grupo"],
+            "Impacto": impacto
         })
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(linhas)
 
-df = engine()
+df = motor()
 if df.empty:
     st.stop()
 
 # =========================
-# CORE METRICS
+# MÉTRICAS CENTRAIS
 # =========================
-df["WEIGHT"] = df["IMPACT"].abs() / (df["IMPACT"].abs().sum() + 1e-9)
+df["Peso"] = df["Impacto"].abs() / (df["Impacto"].abs().sum() + 1e-9)
 
-flow = (df["IMPACT"] * df["WEIGHT"]).sum()
-hhi = np.sum(df["WEIGHT"] ** 2)
+fluxo = (df["Impacto"] * df["Peso"]).sum()
+concentracao = np.sum(df["Peso"] ** 2)
 
-driver = df.loc[df["IMPACT"].abs().idxmax(), "ASSET"]
+lider = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
 
-vix = df[df["ASSET"] == "VIX"]["IMPACT"].values
-vix = vix[0] if len(vix) else 0
+vol = df[df["Ativo"] == "VOLATILIDADE DO MERCADO"]["Impacto"].values
+vol = vol[0] if len(vol) else 0
 
 # =========================
-# REGIME ENGINE
+# REGIME DE MERCADO
 # =========================
-if vix > 0.6:
-    regime = "RISKOFF"
-elif flow > 0.2:
-    regime = "RISKON"
-elif abs(flow) < 0.1:
-    regime = "NEUTRAL"
-elif hhi > 0.45:
-    regime = "CONCENTRATED"
+if vol > 0.6:
+    regime = "ESTRESSE DE MERCADO"
+elif fluxo > 0.2:
+    regime = "TENDÊNCIA DE ALTA"
+elif fluxo < -0.2:
+    regime = "TENDÊNCIA DE BAIXA"
+elif abs(fluxo) < 0.1:
+    regime = "MERCADO SEM DIREÇÃO"
+elif concentracao > 0.45:
+    regime = "MERCADO CONCENTRADO"
 else:
-    regime = "DIRECTIONAL"
+    regime = "MERCADO DIRECIONAL MODERADO"
 
 # =========================
-# HEADER (BLOOMBERG STYLE)
+# CABEÇALHO
 # =========================
 c1, c2, c3, c4 = st.columns(4)
 
 c1.metric("REGIME", regime)
-c2.metric("DRIVER", driver)
-c3.metric("FLOW", f"{flow:.3f}")
-c4.metric("HHI", f"{hhi:.2f}")
+c2.metric("LÍDER", lider)
+c3.metric("FLUXO", f"{fluxo:.3f}")
+c4.metric("CONCENTRAÇÃO", f"{concentracao:.2f}")
 
 st.divider()
 
 # =========================
-# TABLE DESK STYLE
+# TABELA PRINCIPAL
 # =========================
-st.markdown("### MARKET FLOW")
+st.markdown("### FLUXO DO MERCADO")
 
-view = df.sort_values("IMPACT", ascending=False).copy()
+tabela = df.sort_values("Impacto", ascending=False).copy()
 
-def fmt(x):
-    sign = "▲" if x > 0 else "▼"
-    return f"{sign} {x:.3f}"
+def formatar(x):
+    sinal = "POSITIVO" if x > 0 else "NEGATIVO"
+    return f"{sinal} | {x:.3f}"
 
-view["IMPACT"] = view["IMPACT"].apply(fmt)
+tabela["FORÇA"] = tabela["Impacto"].apply(formatar)
 
 st.dataframe(
-    view[["GROUP", "ASSET", "IMPACT"]],
+    tabela[["Grupo", "Ativo", "FORÇA"]],
     use_container_width=True,
     hide_index=True
 )
@@ -121,14 +123,38 @@ st.dataframe(
 st.divider()
 
 # =========================
-# DESK VIEW (RAW LIST)
+# LEITURA RÁPIDA
 # =========================
-st.markdown("### TAPE")
+st.markdown("### LEITURA OPERACIONAL")
 
-for _, r in view.iterrows():
-    st.write(f"{r['GROUP']} | {r['ASSET']} | {r['IMPACT']}")
+for _, r in tabela.iterrows():
+    if r["Impacto"] > 0:
+        st.write(f"POSITIVO → {r['Ativo']} ({r['Grupo']}) {r['Impacto']:.3f}")
+    else:
+        st.write(f"NEGATIVO → {r['Ativo']} ({r['Grupo']}) {r['Impacto']:.3f}")
 
 # =========================
-# FOOTER
+# LEGENDA
 # =========================
-st.caption(f"v13.0 | FLOW={flow:.3f} | HHI={hhi:.2f} | MODE=BLOOMBERG")
+st.divider()
+
+st.info("""
+LEGENDA DO SISTEMA
+
+FLUXO:
+- positivo = pressão de alta no mercado
+- negativo = pressão de baixa no mercado
+
+CONCENTRAÇÃO:
+- baixo valor = mercado distribuído
+- alto valor = mercado dependente de poucos ativos
+
+VOLATILIDADE:
+- alta = instabilidade e risco elevado
+- baixa = ambiente controlado
+""")
+
+# =========================
+# FINAL
+# =========================
+st.caption(f"v14.0 | fluxo={fluxo:.3f} | concentração={concentracao:.2f}")
