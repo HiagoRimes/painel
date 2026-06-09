@@ -42,7 +42,6 @@ dados = []
 for cod, cfg in vies_ativos.items():
     z, conv = get_stats(cod)
     score = 100 * np.tanh(z * cfg['corr'] * 0.5)
-    # Fórmula simplificada (Opção A)
     dom = abs(z) * cfg['peso'] * (conv / 100)
     dados.append({"Ativo": cfg['nome'], "Grupo": cfg['grupo'], "Dominancia": dom, "Score": score, "Corr": cfg['corr']})
 
@@ -51,5 +50,6 @@ df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
 
 # 1. Painel Macro
 st.subheader("🌐 Forças Macro")
-df_macro = df.groupby("Grupo").agg({"Dominancia": "sum", "Score": lambda x: np.average(x, weights=df.loc[x.index, 'Dominancia'])}).reset_index()
-df_macro['Pct_Dominancia
+df_macro = df.groupby("Grupo").agg({
+    "Dominancia": "sum", 
+    "Score": lambda x: np.average
