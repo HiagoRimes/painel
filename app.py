@@ -3,9 +3,8 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# Configuração de Layout
-st.set_page_config(page_title="MACA-QUANTI ELITE v8.4", layout="wide")
-st.title("🏛️ MACA-QUANTI ELITE v8.4")
+st.set_page_config(page_title="MACA-QUANTI ELITE v8.5", layout="wide")
+st.title("🏛️ MACA-QUANTI ELITE v8.5")
 
 vies_ativos = {
     "FIXA11.SA": {"nome": "JUROS", "corr": -1.0, "peso": 1.2},
@@ -40,21 +39,27 @@ df['Abs_Impacto'] = df['Impacto'].abs()
 forca_total = df['Impacto'].sum() / (df['Abs_Impacto'].sum() + 1e-9)
 vix = df.loc[df['Ativo']=='VIX', 'Score'].values[0] if 'VIX' in df['Ativo'].values else 0
 spx = df.loc[df['Ativo']=='S&P500', 'Score'].values[0] if 'S&P500' in df['Ativo'].values else 0
-
-# Diagnósticos de Regime
 is_risk_off = (vix > 20) and (spx < 0)
 tem_conflito = (df['Impacto'].max() > 0) and (df['Impacto'].min() < 0)
 
-# Estrutura em 3 Colunas
-col_diag, col_bussola, col_grafico = st.columns([1, 1, 2])
+# 1. BLOCO: Bússola de Decisão (O veredito)
+st.subheader("Bússola Operacional")
+if forca_total > 0.3: st.success(f"### 🟢 COMPRA | Força: {forca_total:.2f}")
+elif forca_total < -0.3: st.error(f"### 🔴 VENDA | Força: {abs(forca_total):.2f}")
+else: st.warning(f"### ⚠️ NEUTRO | Força: {forca_total:.2f}")
 
-with col_diag:
-    st.subheader("Diagnóstico")
-    regime = "Risk-Off (Stress)" if is_risk_off else ("Compressão" if tem_conflito else "Direcional")
-    st.metric("Regime", regime)
-    st.metric("Driver Líder", df.loc[df['Abs_Impacto'].idxmax(), 'Ativo'])
-    st.caption("Conflito Macro: " + ("Sim" if tem_conflito else "Não"))
+# 2. BLOCO: Diagnóstico (Status do Regime)
+st.subheader("Diagnóstico Macro")
+c1, c2, c3 = st.columns(3)
+regime = "Risk-Off (Stress)" if is_risk_off else ("Compressão" if tem_conflito else "Direcional")
+c1.metric("Regime", regime)
+c2.metric("Driver Líder", df.loc[df['Abs_Impacto'].idxmax(), 'Ativo'])
+c3.metric("Conflito Macro", "Sim" if tem_conflito else "Não")
 
-with col_bussola:
-    st.subheader("Decisão")
-    if forca_total > 0.3: st.success(f"### 🟢 COMPRA\nForça: {forca_total:.2f}")
+# 3. BLOCO: Mapa de Forças (O detalhe que faltava)
+st.subheader("Mapa de Forças por Ativo")
+st.bar_chart(df.set_index('Ativo')['Impacto'])
+
+# 4. BLOCO: Tabela de Dados (Para você nunca ficar cego)
+st.subheader("Dados Brutos (Validação)")
+st.table(df[['Ativo', 'Impacto', 'Score']].sort_values('Impacto'))
