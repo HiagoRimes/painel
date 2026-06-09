@@ -61,7 +61,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Grade de ativos com quebras de linha manuais (<br>) nos nomes longos para evitar cortes
+# Grade de ativos com quebras de linha manuais
 macro_ativos = {
     "^BVSP": "IBOVESPA",
     "BRL=X": "DÓLAR COMERCIAL",
@@ -89,7 +89,6 @@ with st.spinner("Calculando distorções matemáticas do mercado..."):
                 fechamento = fechamento.dropna()
                 
                 if len(fechamento) >= 20:
-                    # Cálculo estatístico do Z-Score
                     media = fechamento.rolling(window=20).mean()
                     desvio = fechamento.rolling(window=20).std()
                     z_score_serie = (fechamento - media) / desvio
@@ -123,7 +122,7 @@ with st.spinner("Calculando distorções matemáticas do mercado..."):
 if dados_finais:
     df_painel = pd.DataFrame(dados_finais)
     
-    # 1. MAPA DE CALOR COM TERMÔMETRO HORIZONTAL SUPERIOR CORRIGIDO
+    # 1. MAPA DE CALOR
     fig_mapa = px.treemap(
         df_painel,
         path=["Ativo"],
@@ -135,14 +134,12 @@ if dados_finais:
         custom_data=["Cotação", "Variação Diária", "Z-Score"]
     )
     
-    # Customização do texto interna
     fig_mapa.update_traces(
         texttemplate="<b style='font-size:14px;'>%{label}</b><br><span style='font-size:11px;'>%{customdata[0]}</span><br><span style='font-size:11px;'>Var: %{customdata[1]:.2f}%</span><br><b style='font-size:13px;'>Z: %{customdata[2]:.2f}</b>",
         textposition="middle center",
         tiling=dict(pad=3)
     )
     
-    # Ajustes finos do termômetro para centralizar o título em cima e incluir -1 e +1
     fig_mapa.update_layout(
         coloraxis_colorbar=dict(
             title="Escala Z-Score",
@@ -162,54 +159,13 @@ if dados_finais:
         margin=dict(t=55, l=5, r=5, b=5), 
         height=500 
     )
-    st.plotly_chart(fig_mapa, width='stretch', config={'displayModeBar': False})
+    # CORREÇÃO: use_container_width=True substitui o width='stretch'
+    st.plotly_chart(fig_mapa, use_container_width=True, config={'displayModeBar': False})
     
-    # 2. HISTÓRICO DE TENDÊNCIA AJUSTADO
+    # 2. HISTÓRICO DE TENDÊNCIA
     st.markdown("### 📊 Rastro dos Últimos 15 Dias")
     if series_z_score:
         fig_linhas = go.Figure()
         for nome_ativo, serie in series_z_score.items():
             fig_linhas.add_trace(go.Scatter(
-                x=serie.index.strftime('%d/%m'),
-                y=serie.values,
-                mode='lines',
-                name=nome_ativo,
-                line=dict(width=2)
-            ))
-            
-        fig_linhas.add_hline(y=2.0, line_dash="dash", line_color="#FF3333", annotation_text="+2 Esticado", annotation_position="top left")
-        fig_linhas.add_hline(y=-2.0, line_dash="dash", line_color="#00CC66", annotation_text="-2 Amassado", annotation_position="bottom left")
-        
-        fig_linhas.update_layout(
-            paper_bgcolor="#1e1e1e", plot_bgcolor="#1e1e1e",
-            font=dict(color="#FFFFFF", size=10),
-            margin=dict(t=10, l=5, r=5, b=5), height=380,
-            xaxis=dict(gridcolor="#333333"), yaxis=dict(gridcolor="#333333", range=[-3.1, 3.1]),
-            legend=dict(
-                orientation="h", 
-                yanchor="top", 
-                y=-0.25, 
-                xanchor="center", 
-                x=0.5,
-                font=dict(size=9)
-            )
-        )
-        st.plotly_chart(fig_linhas, use_container_width=True, config={'displayModeBar': False})
-
-    # 3. FILTRO OPERACIONAL
-    st.markdown("### 🧠 Filtro de Correlação")
-    def obter_z(nome):
-        filtro = df_painel.loc[df_painel['Ativo'] == nome, 'Z-Score']
-        return float(filtro.values[0]) if not filtro.empty else 0.0
-
-    z_ibov = obter_z("IBOVESPA")
-    z_dolar = obter_z("DÓLAR COMERCIAL")
-    
-    if z_ibov < -1.5 and z_dolar > 1.5:
-        st.success("🎯 **OPORTUNIDADE QUANTITATIVA:** Dólar muito caro e Bolsa muito barata em relação à média de 20 dias. Alinhamento claro de exaustão do movimento vendedor do Ibovespa.")
-    elif z_ibov > 1.5 and z_dolar < -1.5:
-        st.error("🚨 **RISCO DE TOPO:** Índice trabalhando muito esticado no topo histórico recente e Dólar amassado. Cuidado com compras tardias.")
-    else:
-        st.info("⚖️ **Mercado em Equilíbrio:** Os preços estão trabalhando perto de suas médias matemáticas normais hoje.")
-else:
-    st.error("Erro ao conectar base do Yahoo Finance.")
+                x=serie.index.strftime('%d
