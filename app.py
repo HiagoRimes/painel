@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
-# Configuração de interface limpa para mobile
+# Configuração de interface
 st.set_page_config(page_title="MACA-QUANTI", layout="centered")
 
 st.title("🍎 MACA-QUANTI")
@@ -17,7 +17,7 @@ macro_ativos = {
 ativos_dados = []
 series_z = {}
 
-# Processamento dos dados
+# Processamento
 with st.spinner("Calculando..."):
     for cod, nome in macro_ativos.items():
         try:
@@ -30,12 +30,11 @@ with st.spinner("Calculando..."):
                 ativos_dados.append({"nome": nome, "z": z})
         except: continue
 
-# Grid em 2 colunas nativo (o sistema aceita 100% e não quebra no mobile)
+# Grid em 2 colunas para o celular
 cols = st.columns(2)
 for i, item in enumerate(ativos_dados):
     with cols[i % 2]:
-        # Lógica de cores nativa usando delta_color
-        # Z > 1.5 = VENDA (Vermelho), Z < -1.5 = COMPRA (Verde), Neutro = Branco
+        # Lógica de cores nativa
         if item['z'] > 1.5:
             st.metric(label=item['nome'], value=f"{item['z']:.2f}", delta="VENDA", delta_color="inverse")
         elif item['z'] < -1.5:
@@ -43,7 +42,7 @@ for i, item in enumerate(ativos_dados):
         else:
             st.metric(label=item['nome'], value=f"{item['z']:.2f}", delta="NEUTRO", delta_color="off")
 
-# Gráfico otimizado
+# Gráfico
 st.subheader("📊 Rastro (15 dias)")
 fig = go.Figure()
 for nome, serie in series_z.items():
