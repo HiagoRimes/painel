@@ -12,33 +12,33 @@ macro_ativos = {
     "MATB11.SA": "IMAT", "FIND11.SA": "IFNC", "B3SA3.SA": "B3SA3"
 }
 
-# Função para definir cor do container
-def get_color(z):
-    if z < -1.5: return "green"
-    if z > 1.5: return "red"
-    return "grey"
-
 # Processamento
 dados = []
-for cod, nome in macro_ativos.items():
-    try:
-        df = yf.download(cod, period="60d", interval="1d", progress=False)
-        fechamento = df['Close'].iloc[-1]
-        z = (fechamento - df['Close'].rolling(20).mean().iloc[-1]) / df['Close'].rolling(20).std().iloc[-1]
-        dados.append({"nome": nome, "z": z})
-    except: continue
+with st.spinner("Calculando..."):
+    for cod, nome in macro_ativos.items():
+        try:
+            df = yf.download(cod, period="60d", interval="1d", progress=False)
+            if not df.empty:
+                # Pegamos o valor como float puro para evitar erros do Pandas
+                fechamento = df['Close'].iloc[-1]
+                media = df['Close'].rolling(20).mean().iloc[-1]
+                std = df['Close'].rolling(20).std().iloc[-1]
+                
+                # Garantindo que z seja um número (float)
+                z = float((fechamento - media) / std)
+                dados.append({"nome": nome, "z": z})
+        except: continue
 
-# Criando o painel em colunas (o máximo que o mobile permite sem quebrar)
+# Grid em 2 colunas
 cols = st.columns(2)
 
 for i, item in enumerate(dados):
     with cols[i % 2]:
-        color = get_color(item['z'])
-        # Usamos os blocos nativos coloridos do Streamlit
-        if color == "green":
+        # Comparação agora é segura porque z é um float
+        if item['z'] < -1.5:
             with st.container(border=True):
                 st.success(f"{item['nome']}\n\nZ: {item['z']:.2f}")
-        elif color == "red":
+        elif item['z'] > 1.5:
             with st.container(border=True):
                 st.error(f"{item['nome']}\n\nZ: {item['z']:.2f}")
         else:
