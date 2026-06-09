@@ -4,8 +4,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-st.set_page_config(page_title="MACA-QUANTI", layout="wide")
-st.title("🏛️ MACA-QUANTI | Força de Correlação")
+st.set_page_config(page_title="MACA-QUANTI TESTE", layout="wide")
+st.title("🏛️ MACA-QUANTI | Modo Diagnóstico")
 
 # =========================
 # UNIVERSO
@@ -21,54 +21,46 @@ ativos = {
 }
 
 # =========================
-# DADOS
+# DADOS (MAIOR HISTÓRICO PARA TESTE)
 # =========================
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=120)
 def load(ticker):
     try:
         df = yf.download(
             ticker,
-            period="10d",      # 🔥 mais candles para não ficar flat
-            interval="5m",     # 🔥 intraday real
+            period="30d",      # 🔥 AUMENTADO (teste)
+            interval="15m",    # 🔥 meio-termo estável
             progress=False
         )
 
         if df is None or df.empty:
             return None
 
-        serie = df["Close"].dropna()
-
-        if len(serie) < 20:
-            return None
-
-        return serie
+        return df["Close"].dropna()
 
     except:
         return None
 
 # =========================
-# FORÇA (ESTÁVEL PARA INTRADAY)
+# FORÇA (SEU MODELO, SEM ALTERAR IDEIA)
 # =========================
 def force(series):
-    if series is None or len(series) < 10:
+    if series is None or len(series) < 20:
         return 0.0
 
     series = series.dropna()
 
     try:
-        # retornos curtos (intraday real)
         r1 = (series.iloc[-1] / series.iloc[-2]) - 1
-        r5 = (series.iloc[-1] / series.iloc[-5]) - 1
+        r10 = (series.iloc[-1] / series.iloc[-10]) - 1
 
-        retorno = (0.7 * r1 + 0.3 * r5)
+        retorno = (0.6 * r1 + 0.4 * r10)
 
-        # volatilidade mais estável (evita zero)
-        vol = series.pct_change().rolling(20).std().iloc[-1]
+        vol = series.pct_change().rolling(30).std().iloc[-1]
 
         if pd.isna(vol) or vol < 1e-6:
             vol = 0.001
 
-        # compressão leve para não explodir nem zerar
         return float(np.tanh((retorno / vol) * 3))
 
     except:
@@ -102,14 +94,13 @@ for name, cfg in ativos.items():
 df = pd.DataFrame(rows)
 
 if df.empty:
-    st.error("Sem dados Yahoo disponíveis")
+    st.error("Sem dados do Yahoo")
     st.stop()
 
-# garante tipo numérico
 df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
 
 # =========================
-# PRESSÃO AGREGADA
+# PRESSÃO
 # =========================
 buy = df.loc[df["Impacto"] > 0, "Impacto"].sum()
 sell = abs(df.loc[df["Impacto"] < 0, "Impacto"].sum())
@@ -119,18 +110,9 @@ total = buy + sell + 1e-9
 pct_buy = buy / total
 pct_sell = sell / total
 
-if pct_buy > 0.55:
-    trend = "🟢 COMPRA"
-elif pct_sell > 0.55:
-    trend = "🔴 VENDA"
-else:
-    trend = "🟡 NEUTRO"
+trend = "🟢 COMPRA" if pct_buy > 0.55 else "🔴 VENDA" if pct_sell > 0.55 else "🟡 NEUTRO"
 
-# =========================
-# LÍDER
-# =========================
-df = df.sort_values("Impacto", ascending=False)
-leader = df.iloc[0]["Ativo"]
+leader = df.sort_values("Impacto", ascending=False).iloc[0]["Ativo"]
 
 # =========================
 # UI
@@ -150,4 +132,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI | correlação intraday estabilizada")
+st.caption("MODO DIAGNÓSTICO | validação de sinal")
