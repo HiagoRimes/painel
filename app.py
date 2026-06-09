@@ -6,9 +6,9 @@ import numpy as np
 # =========================
 # CONFIG
 # =========================
-st.set_page_config(page_title="MACA-QUANTI v10.2", layout="wide")
+st.set_page_config(page_title="MACA-QUANTI v10.3", layout="wide")
 
-st.title("🏛️ MACA-QUANTI v10.2 | FLUXO INSTITUCIONAL")
+st.title("🏛️ MACA-QUANTI v10.3 | FLUXO INSTITUCIONAL (DESK)")
 
 # =========================
 # ATIVOS (SEM SIGLAS)
@@ -70,7 +70,6 @@ hhi = np.sum(df["Peso"] ** 2)
 # HEADER
 # =========================
 c1, c2, c3 = st.columns(3)
-
 c1.metric("DRIVER", driver)
 c2.metric("FLUXO", f"{flow:.3f}")
 c3.metric("CONCENTRAÇÃO", f"{hhi:.2f}")
@@ -78,7 +77,7 @@ c3.metric("CONCENTRAÇÃO", f"{hhi:.2f}")
 st.divider()
 
 # =========================
-# DIREÇÃO
+# DIREÇÃO DO MERCADO
 # =========================
 st.subheader("DIREÇÃO DO MERCADO")
 
@@ -92,39 +91,43 @@ else:
 st.divider()
 
 # =========================
-# TABELA LIMPA
+# MAPA DE IMPACTO (LISTA PROFISSIONAL)
 # =========================
-st.subheader("FORÇA DOS ATIVOS")
+st.subheader("MAPA DE IMPACTO (RANKING DE FLUXO)")
 
-view = df.sort_values("Impacto", ascending=True).copy()
+view = df.sort_values("Impacto", ascending=False).copy()
 
-def barra_vertical(valor):
-    intensidade = int(min(abs(valor) * 20, 20))
+max_abs = view["Impacto"].abs().max() + 1e-9
 
-    if valor > 0:
-        return "🟩\n" * intensidade
+def barra(x):
+    n = int((abs(x) / max_abs) * 20)
+
+    if x > 0:
+        return "🟩" * n
     else:
-        return "🟥\n" * intensidade
+        return "🟥" * n
 
-view["FORÇA"] = view["Impacto"].apply(barra_vertical)
-view["Impacto"] = view["Impacto"].round(3)
+view["FORÇA"] = view["Impacto"].apply(barra)
+view["IMPACTO"] = view["Impacto"].round(3)
 
 st.dataframe(
-    view[["Ativo", "FORÇA", "Impacto"]],
+    view[["Ativo", "FORÇA", "IMPACTO"]],
     use_container_width=True,
     hide_index=True
 )
 
 # =========================
-# MAPA VERTICAL (NOVO)
+# RANKING SIMPLES (SEM GRÁFICO AZUL)
 # =========================
-st.subheader("MAPA DE IMPACTO (VISUAL VERTICAL)")
+st.subheader("RANKING DE DOMINÂNCIA")
 
-chart_df = df.set_index("Ativo")["Impacto"]
+rank = df.sort_values("Impacto", ascending=True).copy()
 
-st.bar_chart(chart_df)
+for i, row in rank.iterrows():
+    cor = "🟢" if row["Impacto"] > 0 else "🔴"
+    st.write(f"{cor} {row['Ativo']}  →  {row['Impacto']:.3f}")
 
 # =========================
 # FOOTER
 # =========================
-st.caption(f"v10.2 | Flow={flow:.3f} | HHI={hhi:.2f}")
+st.caption(f"v10.3 | Flow={flow:.3f} | HHI={hhi:.2f}")
