@@ -18,16 +18,18 @@ vies_ativos = {
     "NQ=F":      {"nome": "NASDAQ",    "corr":  1.0, "peso": 0.4},
 }
 
-# 2. Gráfico Referência (IBOV - Proxy do Índice)
-st.subheader("📊 Gráfico IBOV (Referência)")
+# 2. Gráfico de Variação % (Fim da "linha reta")
+st.subheader("📊 Gráfico IBOV (Variação %)")
 try:
     df_chart = yf.download("^BVSP", period="1d", interval="5m", progress=False)
     if not df_chart.empty:
-        st.line_chart(df_chart['Close'])
+        # Plotando a variação percentual para dar sensibilidade ao gráfico
+        variacao_pct = (df_chart['Close'] / df_chart['Close'].iloc[0] - 1) * 100
+        st.line_chart(variacao_pct)
     else:
-        st.info("Gráfico IBOV em processamento.")
+        st.info("Gráfico em processamento.")
 except:
-    st.info("Gráfico IBOV indisponível.")
+    st.info("Erro ao carregar gráfico.")
 
 # 3. Processamento dos Dados
 def get_stats(cod):
@@ -61,15 +63,14 @@ alinh = df['Score'].mean()
 st.write(f"### **ALINHAMENTO GERAL: {abs(alinh):.1f}%**")
 st.progress(min(abs(alinh) / 100, 1))
 
-# 5. Tabela Limpa (Sem numeração)
+# 5. Tabela Limpa (Sem numeração, largura total)
 df['Status'] = df.apply(lambda x: "🟢 Conf" if x['Score'] * x['Corr'] > 0 else ("🔴 Quebra" if x['Score'] * x['Corr'] < -50 else "🟡 Div"), axis=1)
 tabela_final = df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score', 'Status']].rename(columns={'Pct_Dominancia': 'Dom %'})
-# O comando hide_index remove a numeração lateral
 st.dataframe(tabela_final, hide_index=True, use_container_width=True)
 
 # 6. Rodapé
 st.write("---")
 with st.expander("📖 Guia de Leitura"):
-    st.write("O gráfico acima usa o IBOV como referência estrutural.")
+    st.write("O gráfico mostra a variação percentual do IBOV no dia.")
     st.write("Tabela: 🟢 Conf (Ajuda o movimento), 🟡 Div (Cautela), 🔴 Quebra (Possível reversão).")
     
