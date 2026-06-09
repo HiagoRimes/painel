@@ -39,10 +39,10 @@ def engine():
         if isinstance(c, pd.DataFrame):
             c = c.iloc[:, 0]
 
-        mean = c.rolling(20).mean().iloc[-1]
+        ma = c.rolling(20).mean().iloc[-1]
         std = c.rolling(20).std().iloc[-1]
 
-        z = (c.iloc[-1] - mean) / max(std, 1e-9)
+        z = (c.iloc[-1] - ma) / max(std, 1e-9)
         impact = np.tanh(z) * v["corr"]
 
         rows.append({
@@ -57,18 +57,19 @@ if df.empty:
     st.stop()
 
 # =========================
-# METRICS CORE
+# METRICS
 # =========================
 total_abs = df["Impacto"].abs().sum() + 1e-9
 
 df["Peso"] = df["Impacto"].abs() / total_abs
+
 flow = (df["Impacto"] * df["Peso"]).sum()
 
 driver = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
 hhi = np.sum(df["Peso"] ** 2)
 
 # =========================
-# HEADER (ESTILO MESA)
+# HEADER
 # =========================
 c1, c2, c3 = st.columns(3)
 
@@ -79,53 +80,50 @@ c3.metric("CONCENTRAÇÃO", f"{hhi:.2f}")
 st.divider()
 
 # =========================
-# BÚSSOLA SIMPLES
+# DIREÇÃO
 # =========================
 st.subheader("DIREÇÃO DO MERCADO")
 
 if flow > 0.15:
-    st.markdown("### MERCADO COM VIÉS POSITIVO")
+    st.success("MERCADO COM VIÉS POSITIVO")
 elif flow < -0.15:
-    st.markdown("### MERCADO COM VIÉS NEGATIVO")
+    st.error("MERCADO COM VIÉS NEGATIVO")
 else:
-    st.markdown("### MERCADO SEM DIREÇÃO")
+    st.warning("MERCADO SEM DIREÇÃO DEFINIDA")
 
 st.divider()
 
 # =========================
-# TABELA LIMPA (MESA REAL)
+# FLUXO INSTITUCIONAL (SEM STYLE - FIX)
 # =========================
 st.subheader("FLUXO INSTITUCIONAL")
 
 view = df.sort_values("Impacto", ascending=False).copy()
 
-def formatar(x):
-    sinal = "▲" if x > 0 else "▼"
-    return f"{sinal} {x:.3f}"
+def formatar_linha(row):
+    if row["Impacto"] > 0:
+        return f"🟢 {row['Ativo']}   ▲ {row['Impacto']:.3f}"
+    else:
+        return f"🔴 {row['Ativo']}   ▼ {row['Impacto']:.3f}"
 
-def cor(x):
-    return "color:#00c853" if x > 0 else "color:#ff1744"
-
-view["IMPACTO"] = view["Impacto"].apply(formatar)
-
-styled = view.style.applymap(cor, subset=["Impacto"])
+view["FLUXO"] = view.apply(formatar_linha, axis=1)
 
 st.dataframe(
-    styled[["Ativo", "IMPACTO"]],
+    view[["FLUXO"]],
     use_container_width=True,
     hide_index=True
 )
 
 # =========================
-# RANKING SECO (LEITURA RÁPIDA)
+# RANKING SIMPLES
 # =========================
 st.subheader("RANKING DE PRESSÃO")
 
 for _, row in view.iterrows():
-    if row["Impacto"].startswith("▲"):
-        st.write(f"🟢 {row['Ativo']}  {row['IMPACTO']}")
+    if row["Impacto"] > 0:
+        st.write(f"🟢 {row['Ativo']} → {row['Impacto']:.3f}")
     else:
-        st.write(f"🔴 {row['Ativo']}  {row['IMPACTO']}")
+        st.write(f"🔴 {row['Ativo']} → {row['Impacto']:.3f}")
 
 # =========================
 # FOOTER
