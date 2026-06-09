@@ -7,23 +7,23 @@ import numpy as np
 st.set_page_config(page_title="MACA-QUANTI ELITE", layout="centered")
 st.title("🍎 MACA-QUANTI ELITE")
 
-# 1. PAINEL DE DADOS IBOV (Substituindo o gráfico que falhava)
+# 1. MONITOR IBOV (Blindado para não travar o restante)
 st.subheader("📍 Monitor IBOV")
 try:
-    df_ibov = yf.download("^BVSP", period="1d", interval="1m", progress=False)
+    # Usando período '1d' que é mais estável na API
+    df_ibov = yf.download("^BVSP", period="1d", interval="5m", progress=False)
     if not df_ibov.empty:
-        preco_atual = df_ibov['Close'].iloc[-1]
-        preco_abertura = df_ibov['Open'].iloc[0]
-        variacao = ((preco_atual - preco_abertura) / preco_abertura) * 100
-        
+        p_atual = df_ibov['Close'].iloc[-1]
+        p_abertura = df_ibov['Open'].iloc[0]
+        var = ((p_atual - p_abertura) / p_abertura) * 100
         c1, c2, c3 = st.columns(3)
-        c1.metric("Atual", f"{preco_atual:,.0f}")
-        c2.metric("Abertura", f"{preco_abertura:,.0f}")
-        c3.metric("Var %", f"{variacao:,.2f}%", delta_color="normal")
+        c1.metric("Atual", f"{p_atual:,.0f}")
+        c2.metric("Abertura", f"{p_abertura:,.0f}")
+        c3.metric("Var %", f"{var:,.2f}%")
     else:
-        st.warning("Dados IBOV indisponíveis.")
-except:
-    st.warning("Erro ao carregar dados IBOV.")
+        st.write("Dados temporariamente indisponíveis.")
+except Exception:
+    st.write("Monitor IBOV em manutenção.")
 
 st.write("---")
 
@@ -38,7 +38,7 @@ vies_ativos = {
     "NQ=F":      {"nome": "NASDAQ",    "corr":  1.0, "peso": 0.4},
 }
 
-# 3. Processamento dos Dados
+# 3. Processamento de dados
 def get_stats(cod):
     df = yf.download(cod, period="30d", interval="1d", progress=False)
     if df.empty: return 0, 0
@@ -59,7 +59,7 @@ for cod, cfg in vies_ativos.items():
 df = pd.DataFrame(dados).sort_values("Dominancia", ascending=False)
 df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
 
-# 4. Hierarquia e Tabela
+# 4. Exibição da Hierarquia e Tabela
 st.subheader("🎯 Hierarquia de Drivers")
 col1, col2 = st.columns(2)
 col1.metric("Primário", df.iloc[0]['Ativo'])
@@ -69,6 +69,9 @@ alinh = df['Score'].mean()
 st.progress(min(abs(alinh) / 100, 1))
 
 df['Status'] = df.apply(lambda x: "🟢 Conf" if x['Score'] * x['Corr'] > 0 else ("🔴 Quebra" if x['Score'] * x['Corr'] < -50 else "🟡 Div"), axis=1)
-tabela_final = df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score', 'Status']].rename(columns={'Pct_Dominancia': 'Dom %'})
-st.dataframe(tabela_final, hide_index=True, use_container_width=True)
-    
+st.dataframe(df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score', 'Status']].rename(columns={'Pct_Dominancia': 'Dom %'}), hide_index=True, use_container_width=True)
+
+# 5. Legendas fixas para não sumir
+st.write("---")
+with st.expander("📖 Guia de Leitura"):
+    st.write("🟢 Conf (Ajuda o movimento) | 🟡 Div (Cautela) | 🔴 Quebra (Possível reversão).")
