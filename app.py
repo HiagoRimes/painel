@@ -19,7 +19,7 @@ div[data-testid="metric-container"] {
 st.title("🏛️ MACA-QUANTI ELITE v9.5 | Bloomberg Terminal")
 
 # =========================
-# MAPA
+# ASSETS
 # =========================
 vies_ativos = {
     "FIXA11.SA": {"nome": "JRS", "corr": -1.0, "peso": 1.2},
@@ -32,7 +32,7 @@ vies_ativos = {
 }
 
 # =========================
-# MOTOR
+# ENGINE
 # =========================
 @st.cache_data(ttl=60)
 def engine():
@@ -47,7 +47,10 @@ def engine():
         if isinstance(c, pd.DataFrame):
             c = c.iloc[:, -1]
 
-        z = (c.iloc[-1] - c.rolling(20).mean().iloc[-1]) / max(c.rolling(20).std().iloc[-1], 1e-9)
+        mean20 = c.rolling(20).mean().iloc[-1]
+        std20 = c.rolling(20).std().iloc[-1]
+
+        z = (c.iloc[-1] - mean20) / max(std20, 1e-9)
         score = np.tanh(z * 0.5) * 100
 
         out.append({
@@ -62,15 +65,16 @@ if df.empty:
     st.stop()
 
 # =========================
-# MÉTRICAS CORE
+# METRICS
 # =========================
 total_abs = df["Impacto"].abs().sum() + 1e-9
+
 hhi = np.sum((df["Impacto"].abs() / total_abs) ** 2)
+qualidade = 1 - hhi
 
 raw = df["Impacto"].sum() / total_abs
 forca = np.tanh(raw)
 
-qualidade = 1 - hhi
 intensidade = abs(forca) * (1 - hhi)
 
 driver = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
@@ -94,20 +98,22 @@ elif forca > 0.2:
 else:
     regime = "NEUTRO"
 
-# =========================
-# HEADER BLOOMBERG BAR
-# =========================
-colA, colB, colC, colD = st.columns(4)
+consenso = 1 - hhi if forca > 0 else hhi
 
-colA.metric("REGIME", regime)
-colB.metric("DRIVER", driver)
-colC.metric("HHI", f"{hhi:.2f}")
-colD.metric("INT", f"{intensidade:.2f}")
+# =========================
+# HEADER
+# =========================
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("REGIME", regime)
+c2.metric("DRIVER", driver)
+c3.metric("HHI", f"{hhi:.2f}")
+c4.metric("INT", f"{intensidade:.2f}")
 
 st.divider()
 
 # =========================
-# LEFT: SCOREBOARD
+# LEFT PANEL
 # =========================
 left, right = st.columns([1, 2])
 
@@ -124,24 +130,22 @@ with left:
     st.caption(f"Força: {forca:.2f}")
 
 # =========================
-# RIGHT: BLOOMBERG HEAT LIST
+# RIGHT PANEL (FIX STREAMLIT STYLE BUG)
 # =========================
 with right:
     st.subheader("MARKET PULSE")
-
-    def style(val):
-        if val > 0:
-            return "color:#00ff88;font-weight:700"
-        return "color:#ff4d4d;font-weight:700"
 
     view = df.copy()
     view["DIR"] = np.where(view["Impacto"] > 0, "▲", "▼")
     view["Impacto"] = view["Impacto"].round(2)
 
+    # stable coloring (NO .style.applymap / NO Streamlit crash)
+    view["Impacto"] = view["Impacto"].apply(
+        lambda x: f"🟢 {x:.2f}" if x > 0 else f"🔴 {x:.2f}"
+    )
+
     st.dataframe(
-        view[["Ativo", "DIR", "Impacto"]]
-        .sort_values("Impacto", ascending=False)
-        .style.applymap(style, subset=["Impacto"]),
+        view[["Ativo", "DIR", "Impacto"]].sort_values("Impacto", ascending=False),
         use_container_width=True,
         hide_index=True
     )
@@ -150,5 +154,5 @@ with right:
 # FOOTER
 # =========================
 st.caption(
-    f"v9.5 | Regime={regime} | Qualidade={qualidade:.2f} | Intensidade={intensidade:.2f} | HHI={hhi:.2f}"
+    f"v9.5 | Regime={regime} | Qualidade={qualidade:.2f} | Intensidade={intensidade:.2f} | HHI={hhi:.2f} | Consenso={consenso:.2f}"
 )
