@@ -3,29 +3,14 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
+# Configuração de layout
 st.set_page_config(page_title="MACA-QUANTI", layout="wide")
 
-# CSS para o visual do painel
+# Estilo para o título ser responsivo
 st.markdown("""
     <style>
-        /* Título Responsivo */
-        .main-title { font-size: 32px; font-weight: bold; }
-        @media (max-width: 600px) {
-            .main-title { font-size: 20px !important; }
-        }
-
-        /* Grade e Cartões */
-        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 10px; }
-        .card { 
-            background-color: #2e2e2e; 
-            padding: 10px; 
-            border-radius: 8px; 
-            text-align: center; 
-            border-left: 6px solid #444; 
-            height: 100%;
-        }
-        .card-name { font-weight: bold; font-size: 13px; color: #fff; }
-        .card-val { font-size: 14px; color: #ddd; margin-top: 4px; }
+        .main-title { font-size: 28px; font-weight: bold; }
+        @media (max-width: 600px) { .main-title { font-size: 20px !important; } }
     </style>
 """, unsafe_allow_html=True)
 
@@ -38,7 +23,7 @@ macro_ativos = {
 }
 
 series_z = {}
-cards_html = '<div class="grid-container">'
+ativos_processados = []
 
 with st.spinner("Calculando..."):
     for cod, nome in macro_ativos.items():
@@ -49,18 +34,21 @@ with st.spinner("Calculando..."):
                 z_serie = (fechamento - fechamento.rolling(20).mean()) / fechamento.rolling(20).std()
                 series_z[nome] = z_serie.tail(15)
                 z = z_serie.iloc[-1]
-                
-                # Definição das cores da borda
-                cor = "#FF4B4B" if z > 1.5 else ("#00CC96" if z < -1.5 else "#888")
-                cards_html += f'''
-                    <div class="card" style="border-left-color:{cor};">
-                        <div class="card-name">{nome}</div>
-                        <div class="card-val">Z: {z:.2f}</div>
-                    </div>
-                '''
+                ativos_processados.append({"nome": nome, "z": z})
         except: continue
-cards_html += '</div>'
-st.markdown(cards_html, unsafe_allow_html=True)
+
+# Grid usando colunas nativas do Streamlit (Muito mais estável)
+# Vamos definir 3 colunas para PC e 2 para mobile
+cols = st.columns([1, 1, 1]) 
+for i, item in enumerate(ativos_processados):
+    with cols[i % 3]:
+        # Define a cor de destaque baseada no Z-Score
+        cor = "normal"
+        if item['z'] > 1.5: cor = "inverse" # Vermelho para Venda
+        elif item['z'] < -1.5: cor = "normal" # Verde para Compra
+        
+        # O st.metric cria a caixa automaticamente e é nativo do Streamlit
+        st.metric(label=item['nome'], value=f"{item['z']:.2f}")
 
 # Gráfico de Linha
 st.subheader("📊 Rastro (15 dias)")
@@ -69,12 +57,12 @@ for nome, serie in series_z.items():
     fig.add_trace(go.Scatter(x=serie.index.strftime('%d/%m'), y=serie.values, mode='lines', name=nome))
 
 fig.update_layout(
-    height=400, margin=dict(l=0, r=0, t=20, b=0), 
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
+    height=350, margin=dict(l=0, r=0, t=20, b=0),
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     font_color="#fff",
     legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5)
 )
 st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
-st.markdown("🟢 **Z < -1.5 (Compra)** | 🔴 **Z > 1.5 (Venda)**")
+st.write("🟢 Z < -1.5 (Compra) | 🔴 Z > 1.5 (Venda)")
