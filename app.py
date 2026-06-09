@@ -4,176 +4,151 @@ import pandas as pd
 import numpy as np
 
 # =========================
-# CONFIGURAÇÃO
+# CONFIG
 # =========================
-st.set_page_config(page_title="MACA-QUANTI ELITE v9.4", layout="wide")
+st.set_page_config(page_title="MACA-QUANTI v9.5", layout="wide")
 
 st.markdown("""
 <style>
 div[data-testid="metric-container"] {
-    min-width: 120px;
+    min-width: 110px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏛️ MACA-QUANTI ELITE v9.4 | Motor Institucional")
+st.title("🏛️ MACA-QUANTI ELITE v9.5 | Bloomberg Terminal")
 
 # =========================
-# MAPA DE NOMES (UI LIMPA)
+# MAPA
 # =========================
-nome_map = {
-    "JUROS": "JRS",
-    "DÓLAR": "USD",
-    "IFNC": "FIN",
-    "EWZ": "EWZ",
-    "S&P500": "SPX",
-    "NASDAQ": "NDX",
-    "VIX": "VIX"
-}
-
 vies_ativos = {
-    "FIXA11.SA": {"nome": "JUROS", "corr": -1.0, "peso": 1.2},
-    "BRL=X":     {"nome": "DÓLAR", "corr": -1.0, "peso": 1.2},
-    "FIND11.SA": {"nome": "IFNC",  "corr": 1.0,  "peso": 0.8},
-    "EWZ":       {"nome": "EWZ",   "corr": 1.0,  "peso": 0.8},
-    "ES=F":      {"nome": "S&P500", "corr": 1.0, "peso": 0.6},
-    "^VIX":      {"nome": "VIX",   "corr": -1.0, "peso": 0.5},
-    "NQ=F":      {"nome": "NASDAQ", "corr": 1.0, "peso": 0.4},
+    "FIXA11.SA": {"nome": "JRS", "corr": -1.0, "peso": 1.2},
+    "BRL=X":     {"nome": "USD", "corr": -1.0, "peso": 1.2},
+    "FIND11.SA": {"nome": "FIN", "corr": 1.0,  "peso": 0.8},
+    "EWZ":       {"nome": "EWZ", "corr": 1.0,  "peso": 0.8},
+    "ES=F":      {"nome": "SPX", "corr": 1.0,  "peso": 0.6},
+    "^VIX":      {"nome": "VIX", "corr": -1.0, "peso": 0.5},
+    "NQ=F":      {"nome": "NDX", "corr": 1.0,  "peso": 0.4},
 }
 
 # =========================
 # MOTOR
 # =========================
 @st.cache_data(ttl=60)
-def get_motor_profissional():
-    res = []
+def engine():
+    out = []
 
     for cod, cfg in vies_ativos.items():
-        try:
-            df_y = yf.download(cod, period="60d", interval="1d", progress=False)
-            if df_y is None or df_y.empty:
-                continue
-
-            c = df_y["Close"]
-            if isinstance(c, pd.DataFrame):
-                c = c.iloc[:, -1]
-
-            z = (c.iloc[-1] - c.rolling(20).mean().iloc[-1]) / max(c.rolling(20).std().iloc[-1], 1e-9)
-            score = np.tanh(z * 0.5) * 100
-
-            res.append({
-                "Ativo": nome_map[cfg["nome"]],
-                "Impacto": score * cfg["corr"] * cfg["peso"]
-            })
-
-        except Exception:
+        df = yf.download(cod, period="60d", interval="1d", progress=False)
+        if df.empty:
             continue
 
-    return pd.DataFrame(res)
+        c = df["Close"]
+        if isinstance(c, pd.DataFrame):
+            c = c.iloc[:, -1]
 
-df = get_motor_profissional()
+        z = (c.iloc[-1] - c.rolling(20).mean().iloc[-1]) / max(c.rolling(20).std().iloc[-1], 1e-9)
+        score = np.tanh(z * 0.5) * 100
+
+        out.append({
+            "Ativo": cfg["nome"],
+            "Impacto": score * cfg["corr"] * cfg["peso"]
+        })
+
+    return pd.DataFrame(out)
+
+df = engine()
 if df.empty:
     st.stop()
 
 # =========================
-# DOMINÂNCIA (SEM Abs_Impacto)
+# MÉTRICAS CORE
 # =========================
 total_abs = df["Impacto"].abs().sum() + 1e-9
+hhi = np.sum((df["Impacto"].abs() / total_abs) ** 2)
 
-hhi_sum = np.sum((df["Impacto"].abs() / total_abs) ** 2)
-qualidade_regime = 1 - hhi_sum
+raw = df["Impacto"].sum() / total_abs
+forca = np.tanh(raw)
 
-# =========================
-# FORÇA
-# =========================
-raw_forca = df["Impacto"].sum() / (total_abs + 1e-9)
-forca_total = np.tanh(raw_forca)
+qualidade = 1 - hhi
+intensidade = abs(forca) * (1 - hhi)
 
-intensidade_regime = abs(forca_total) * (1 - hhi_sum)
+driver = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
 
-# =========================
-# DRIVER
-# =========================
-driver_lider = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
+vix = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0] if "VIX" in df["Ativo"].values else 0
+spx = df.loc[df["Ativo"] == "SPX", "Impacto"].values[0] if "SPX" in df["Ativo"].values else 0
 
 # =========================
-# CONFLITO
+# REGIME ENGINE
 # =========================
-vix_score = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0] if "VIX" in df["Ativo"].values else 0
-spx_score = df.loc[df["Ativo"] == "SPX", "Impacto"].values[0] if "SPX" in df["Ativo"].values else 0
-
-tem_conflito = vix_score > 10 and abs(spx_score) < 5
-
-# =========================
-# REGIME
-# =========================
-if tem_conflito:
-    regime = "Conflito Macro"
-elif vix_score > 15 and spx_score < 0:
-    regime = "Risk-Off"
-elif hhi_sum > 0.4:
-    regime = "Dominância"
-elif hhi_sum < 0.25:
-    regime = "Compressão"
-elif forca_total > 0.3:
-    regime = "Risk-On"
+if vix > 10 and abs(spx) < 5:
+    regime = "CONFLITO"
+elif vix > 15 and spx < 0:
+    regime = "RISK OFF"
+elif hhi > 0.4:
+    regime = "DOMINÂNCIA"
+elif hhi < 0.25:
+    regime = "COMPRESSÃO"
+elif forca > 0.2:
+    regime = "RISK ON"
 else:
-    regime = "Neutro"
+    regime = "NEUTRO"
 
 # =========================
-# CONSENSO
+# HEADER BLOOMBERG BAR
 # =========================
-consenso = 1 - hhi_sum if forca_total > 0 else hhi_sum
+colA, colB, colC, colD = st.columns(4)
 
-# =========================
-# UI
-# =========================
-col1, col2, col3, col4, col5 = st.columns(5)
-
-col1.metric("Regime", regime)
-col2.metric("Driver", driver_lider[:6])
-col3.metric("HHI", f"{hhi_sum:.2f}")
-col4.metric("Qualidade", f"{qualidade_regime:.2f}")
-col5.metric("Intensidade", f"{intensidade_regime:.2f}")
-col5.metric("Consenso", f"{consenso:.2f}")
+colA.metric("REGIME", regime)
+colB.metric("DRIVER", driver)
+colC.metric("HHI", f"{hhi:.2f}")
+colD.metric("INT", f"{intensidade:.2f}")
 
 st.divider()
 
-col_left, col_right = st.columns([1, 2])
+# =========================
+# LEFT: SCOREBOARD
+# =========================
+left, right = st.columns([1, 2])
 
-with col_left:
-    st.subheader("Bússola WIN")
+with left:
+    st.subheader("BÚSSOLA")
 
-    if forca_total > 0.2:
-        st.success(f"🟢 COMPRA ({forca_total:.2f})")
-    elif forca_total < -0.2:
-        st.error(f"🔴 VENDA ({abs(forca_total):.2f})")
+    if forca > 0.2:
+        st.markdown("## 🟢 BUY FLOW")
+    elif forca < -0.2:
+        st.markdown("## 🔴 SELL FLOW")
     else:
-        st.warning("⚠️ NEUTRO")
+        st.markdown("## ⚪ NEUTRAL")
 
-with col_right:
-    st.subheader("Fluxo Institucional (Ultra Compacto)")
+    st.caption(f"Força: {forca:.2f}")
 
-    df_view = df.copy()
-    df_view["Dir"] = np.where(df_view["Impacto"] > 0, "▲", "▼")
-    df_view["Impacto"] = df_view["Impacto"].round(2)
+# =========================
+# RIGHT: BLOOMBERG HEAT LIST
+# =========================
+with right:
+    st.subheader("MARKET PULSE")
+
+    def style(val):
+        if val > 0:
+            return "color:#00ff88;font-weight:700"
+        return "color:#ff4d4d;font-weight:700"
+
+    view = df.copy()
+    view["DIR"] = np.where(view["Impacto"] > 0, "▲", "▼")
+    view["Impacto"] = view["Impacto"].round(2)
 
     st.dataframe(
-        df_view[["Ativo", "Dir", "Impacto"]]
-        .sort_values("Impacto", ascending=False),
+        view[["Ativo", "DIR", "Impacto"]]
+        .sort_values("Impacto", ascending=False)
+        .style.applymap(style, subset=["Impacto"]),
         use_container_width=True,
         hide_index=True
     )
 
-with st.expander("Legenda"):
-    st.markdown("""
-    - Regime: estado macro do mercado  
-    - HHI: concentração de fluxo  
-    - Qualidade: dispersão saudável  
-    - Intensidade: força ajustada  
-    - Consenso: alinhamento dos drivers  
-    """)
-
+# =========================
+# FOOTER
+# =========================
 st.caption(
-    f"v9.4 | Regime: {regime} | Qualidade: {qualidade_regime:.2f} | Intensidade: {intensidade_regime:.2f} | HHI: {hhi_sum:.2f}"
+    f"v9.5 | Regime={regime} | Qualidade={qualidade:.2f} | Intensidade={intensidade:.2f} | HHI={hhi:.2f}"
 )
