@@ -28,7 +28,7 @@ ativos = {
 indice_ref = "^BVSP"
 
 # =========================
-# CACHE
+# DADOS
 # =========================
 @st.cache_data(ttl=60)
 def baixar(ticker, period="5d", interval="1m"):
@@ -36,29 +36,48 @@ def baixar(ticker, period="5d", interval="1m"):
         df = yf.download(ticker, period=period, interval=interval, progress=False)
         if df is None or df.empty:
             return None
-        return df["Close"].dropna()
+        serie = df["Close"].dropna()
+        if len(serie) < 5:
+            return None
+        return serie
     except:
         return None
 
 
 # =========================
-# MOVIMENTO ANORMAL (CORRIGIDO)
+# MOVIMENTO ANORMAL (ROBUSTO)
 # =========================
 def movimento_anormal(series):
-    if series is None or len(series) < 50:
+    try:
+        if series is None:
+            return 0
+
+        series = series.dropna()
+
+        if len(series) < 50:
+            return 0
+
+        roll = series.rolling(50)
+
+        atual = series.iloc[-1]
+        media = roll.mean().iloc[-1]
+        std = roll.std().iloc[-1]
+
+        if pd.isna(atual) or pd.isna(media) or pd.isna(std):
+            return 0
+
+        if std == 0 or std is None:
+            return 0
+
+        z = (atual - media) / std
+
+        if np.isnan(z) or np.isinf(z):
+            return 0
+
+        return np.tanh(z)
+
+    except:
         return 0
-
-    roll = series.rolling(50)
-
-    atual = float(series.iloc[-1])
-    media = float(roll.mean().iloc[-1])
-    std = roll.std().iloc[-1]
-
-    if pd.isna(std) or std == 0:
-        return 0
-
-    z = (atual - media) / float(std)
-    return np.tanh(z)
 
 
 # =========================
@@ -69,13 +88,16 @@ resultados = []
 for nome, cfg in ativos.items():
 
     serie = baixar(cfg["ticker"])
-    if serie is None or len(serie) < 10:
+    if serie is None:
         continue
 
     score = movimento_anormal(serie)
 
-    # direção simples
-    direcao = np.sign(serie.iloc[-1] - serie.iloc[-2]) if len(serie) > 2 else 0
+    # direção curta
+    try:
+        direcao = np.sign(float(serie.iloc[-1]) - float(serie.iloc[-2]))
+    except:
+        direcao = 0
 
     impacto = score * cfg["corr"] * direcao * 100
 
