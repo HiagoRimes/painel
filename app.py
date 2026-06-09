@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 
 # Configuração da página
-st.set_page_config(page_title="MACA-QUANTI ELITE V4", layout="centered")
+st.set_page_config(page_title="MACA-QUANTI ELITE", layout="centered")
 st.title("🍎 MACA-QUANTI ELITE")
 
 # 1. Definição dos ativos e pesos estruturais
@@ -13,18 +13,22 @@ vies_ativos = {
     "BRL=X":     {"nome": "DÓLAR",     "corr": -1.0, "peso": 0.9},
     "FIND11.SA": {"nome": "IFNC",      "corr":  1.0, "peso": 0.8},
     "EWZ":       {"nome": "EWZ",       "corr":  1.0, "peso": 0.7},
+    "ES=F":      {"nome": "S&P500",    "corr":  1.0, "peso": 0.6},
+    "^VIX":      {"nome": "VIX",       "corr": -1.0, "peso": 0.5},
+    "NQ=F":      {"nome": "NASDAQ",    "corr":  1.0, "peso": 0.4},
 }
 
-# 2. Exibição do Gráfico de Segurança (Não trava o app)
-st.subheader("📊 Gráfico WIN (5min)")
+# 2. Gráfico do ÍNDICE CHEIO (Referência Estrutural)
+st.subheader("📊 Gráfico IND (5min - Cheio)")
 try:
-    df_win = yf.download("WIN=F", period="1d", interval="5m", progress=False)
-    if not df_win.empty:
-        st.line_chart(df_win['Close'])
+    # Utilizando IND=F para análise estrutural profissional
+    df_chart = yf.download("IND=F", period="1d", interval="5m", progress=False)
+    if not df_chart.empty:
+        st.line_chart(df_chart['Close'])
     else:
-        st.info("Gráfico WIN indisponível (Mercado fechado ou sem dados).")
+        st.info("Gráfico do Cheio (IND) indisponível no momento.")
 except:
-    st.info("Gráfico WIN não carregado.")
+    st.info("Erro ao carregar o gráfico do Cheio.")
 
 # 3. Processamento dos Dados
 def get_stats(cod):
@@ -86,6 +90,5 @@ with st.expander("📈 Como ler o nosso gráfico de Dominância"):
     2. **Dominância (%):** Indica o peso real de influência de cada ativo.
     3. **Convicção:** Mede a 'energia' por trás do movimento. Quanto maior, mais provável que o movimento tenha continuidade.
     4. **Score WIN (-100 a +100):** Pressão no índice. Acima de 0 pressiona para a alta, abaixo de 0 pressiona para a queda.
-    
-    **Regra de Ouro:** Se o *Driver Primário* estiver com status **🔴 Quebra**, ignore as demais correlações e prepare-se para uma possível reversão no WIN.
     """)
+    
