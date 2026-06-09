@@ -5,13 +5,14 @@ import numpy as np
 from datetime import datetime
 
 # Configuração da página
-st.set_page_config(page_title="MACA-QUANTI ELITE v5.1", layout="centered")
-st.title("🍎 MACA-QUANTI ELITE v5.1")
+st.set_page_config(page_title="MACA-QUANTI ELITE v5.2", layout="centered")
+st.title("🍎 MACA-QUANTI ELITE v5.2")
 
-# Inicialização de memória para o Histórico de Liderança
+# Inicialização de memória
 if 'historico_lideranca' not in st.session_state:
     st.session_state.historico_lideranca = []
 
+# Dicionário de ativos
 vies_ativos = {
     "FIXA11.SA": {"nome": "JUROS LONGOS", "corr": -1.0, "peso": 1.0, "grupo": "JUROS"},
     "BRL=X":     {"nome": "DÓLAR",        "corr": -1.0, "peso": 0.9, "grupo": "DÓLAR"},
@@ -41,10 +42,14 @@ def get_stats(cod):
 dados = []
 for cod, cfg in vies_ativos.items():
     z, conv = get_stats(cod)
-    score = 100 * np.tanh(z * cfg['corr'] * 0.5)
-    sentido = "🟢 ALTA" if score > 0 else "🔴 BAIXA"
+    score_ativo = 100 * np.tanh(z * cfg['corr'] * 0.5)
+    efeito_win = score_ativo * cfg['corr']
+    sentido = "🟢 ALTA p/ WIN" if efeito_win > 0 else "🔴 BAIXA p/ WIN"
     dom = abs(z) * cfg['peso'] * (conv / 100)
-    dados.append({"Ativo": cfg['nome'], "Grupo": cfg['grupo'], "Dominancia": dom, "Score": score, "Corr": cfg['corr'], "Sentido": sentido, "Conviccao": conv})
+    dados.append({
+        "Ativo": cfg['nome'], "Grupo": cfg['grupo'], "Dominancia": dom, 
+        "Score": score_ativo, "Corr": cfg['corr'], "Sentido": sentido, "Conviccao": conv
+    })
 
 df = pd.DataFrame(dados)
 df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
@@ -58,9 +63,8 @@ df_macro = df.groupby("Grupo").agg(
 df_macro['Pct_Dominancia'] = (df_macro['Dominancia'] / df_macro['Dominancia'].sum()) * 100
 df_macro = df_macro.sort_values("Dominancia", ascending=False)
 
-# Driver Atual
 driver_atual = df.sort_values("Dominancia", ascending=False).iloc[0]
-st.metric(f"DRIVER ATUAL: {driver_atual['Ativo']} ({driver_atual['Sentido']})", f"{driver_atual['Pct_Dominancia']:.0f}%")
+st.metric(f"DRIVER ATUAL: {driver_atual['Ativo']} | Efeito: {driver_atual['Sentido']}", f"{driver_atual['Pct_Dominancia']:.0f}%")
 st.dataframe(df_macro.style.format({"Pct_Dominancia": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True)
 
 # 2. HHI e Consenso
@@ -76,10 +80,9 @@ col1, col2 = st.columns(2)
 col1.metric("Consenso ALTA (Ponderado)", f"{pct_alta:.0f}%")
 col2.write(f"**Estrutura (HHI):** {status_hhi}")
 
-# 3. Histórico de Liderança
+# 3. Histórico
 if not st.session_state.historico_lideranca or st.session_state.historico_lideranca[-1]['Ativo'] != driver_atual['Ativo']:
     st.session_state.historico_lideranca.append({'Hora': datetime.now().strftime("%H:%M"), 'Ativo': driver_atual['Ativo']})
-
 with st.expander("🕒 Histórico de Troca de Drivers"):
     for log in reversed(st.session_state.historico_lideranca[-5:]):
         st.text(f"{log['Hora']} → {log['Ativo']}")
@@ -89,5 +92,5 @@ alinh = np.average(df['Score'], weights=df['Dominancia'])
 st.write(f"### **📊 ALINHAMENTO: {abs(alinh):.1f}%**")
 st.progress(min(abs(alinh) / 100, 1))
 
-# 5. Tabela Detalhada (Preservando todas as colunas anteriores)
+# 5. Tabela Final
 st.dataframe(df[['Ativo', 'Grupo', 'Pct_Dominancia', 'Conviccao', 'Sentido', 'Score']].rename(columns={'Pct_Dominancia': 'Dom %'}).style.format({"Dom %": "{:.1f}%", "Conviccao": "{:.0f}", "Score": "{:.0f}"}), hide_index=True)
