@@ -6,153 +6,160 @@ import numpy as np
 # =========================
 # CONFIG
 # =========================
-st.set_page_config(page_title="MACA-QUANTI v9.5", layout="wide")
+st.set_page_config(page_title="MACA-QUANTI v10.0", layout="wide")
 
-st.markdown("""
-<style>
-div[data-testid="metric-container"] {
-    min-width: 110px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.title("🏛️ MACA-QUANTI ELITE v9.5 | Bloomberg Terminal")
+st.title("🏛️ MACA-QUANTI v10.0 | FLOW DESK (Bloomberg Style)")
 
 # =========================
 # ASSETS
 # =========================
-vies_ativos = {
-    "FIXA11.SA": {"nome": "JRS", "corr": -1.0, "peso": 1.2},
-    "BRL=X":     {"nome": "USD", "corr": -1.0, "peso": 1.2},
-    "FIND11.SA": {"nome": "FIN", "corr": 1.0,  "peso": 0.8},
-    "EWZ":       {"nome": "EWZ", "corr": 1.0,  "peso": 0.8},
-    "ES=F":      {"nome": "SPX", "corr": 1.0,  "peso": 0.6},
-    "^VIX":      {"nome": "VIX", "corr": -1.0, "peso": 0.5},
-    "NQ=F":      {"nome": "NDX", "corr": 1.0,  "peso": 0.4},
+assets = {
+    "FIXA11.SA": {"name": "JRS", "corr": -1},
+    "BRL=X":     {"name": "USD", "corr": -1},
+    "FIND11.SA": {"name": "FIN", "corr": 1},
+    "EWZ":       {"name": "EWZ", "corr": 1},
+    "ES=F":      {"name": "SPX", "corr": 1},
+    "^VIX":      {"name": "VIX", "corr": -1},
+    "NQ=F":      {"name": "NDX", "corr": 1},
 }
 
 # =========================
-# ENGINE
+# DATA ENGINE
 # =========================
 @st.cache_data(ttl=60)
-def engine():
-    out = []
+def build():
+    rows = []
 
-    for cod, cfg in vies_ativos.items():
-        df = yf.download(cod, period="60d", interval="1d", progress=False)
+    for k, v in assets.items():
+        df = yf.download(k, period="60d", interval="1d", progress=False)
         if df.empty:
             continue
 
         c = df["Close"]
         if isinstance(c, pd.DataFrame):
-            c = c.iloc[:, -1]
+            c = c.iloc[:, 0]
 
-        mean20 = c.rolling(20).mean().iloc[-1]
-        std20 = c.rolling(20).std().iloc[-1]
+        ma = c.rolling(20).mean().iloc[-1]
+        std = c.rolling(20).std().iloc[-1]
 
-        z = (c.iloc[-1] - mean20) / max(std20, 1e-9)
-        score = np.tanh(z * 0.5) * 100
+        z = (c.iloc[-1] - ma) / max(std, 1e-9)
 
-        out.append({
-            "Ativo": cfg["nome"],
-            "Impacto": score * cfg["corr"] * cfg["peso"]
+        impact = np.tanh(z) * v["corr"]
+
+        rows.append({
+            "Asset": v["name"],
+            "Impact": impact
         })
 
-    return pd.DataFrame(out)
+    return pd.DataFrame(rows)
 
-df = engine()
+df = build()
 if df.empty:
     st.stop()
 
 # =========================
-# METRICS
+# FLOW METRICS
 # =========================
-total_abs = df["Impacto"].abs().sum() + 1e-9
+total = df["Impact"].abs().sum() + 1e-9
 
-hhi = np.sum((df["Impacto"].abs() / total_abs) ** 2)
-qualidade = 1 - hhi
+df["Weight"] = df["Impact"].abs() / total
+df["Contribution"] = df["Impact"] * df["Weight"]
 
-raw = df["Impacto"].sum() / total_abs
-forca = np.tanh(raw)
+flow_score = df["Contribution"].sum()
 
-intensidade = abs(forca) * (1 - hhi)
+hhi = np.sum(df["Weight"] ** 2)
 
-driver = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
+driver = df.loc[df["Impact"].abs().idxmax(), "Asset"]
 
-vix = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0] if "VIX" in df["Ativo"].values else 0
-spx = df.loc[df["Ativo"] == "SPX", "Impacto"].values[0] if "SPX" in df["Ativo"].values else 0
+vix = df[df["Asset"] == "VIX"]["Impact"].values[0] if "VIX" in df["Asset"].values else 0
+spx = df[df["Asset"] == "SPX"]["Impact"].values[0] if "SPX" in df["Asset"].values else 0
 
 # =========================
 # REGIME ENGINE
 # =========================
-if vix > 10 and abs(spx) < 5:
-    regime = "CONFLITO"
-elif vix > 15 and spx < 0:
-    regime = "RISK OFF"
-elif hhi > 0.4:
-    regime = "DOMINÂNCIA"
-elif hhi < 0.25:
-    regime = "COMPRESSÃO"
-elif forca > 0.2:
+if vix > 0.6:
+    regime = "RISK OFF (Stress)"
+elif flow_score > 0.15:
     regime = "RISK ON"
+elif flow_score < -0.15:
+    regime = "RISK OFF"
+elif hhi > 0.35:
+    regime = "IMBALANCED FLOW"
 else:
-    regime = "NEUTRO"
-
-consenso = 1 - hhi if forca > 0 else hhi
+    regime = "NEUTRAL"
 
 # =========================
-# HEADER
+# HEADER (BLOOMBERG BAR)
 # =========================
 c1, c2, c3, c4 = st.columns(4)
 
 c1.metric("REGIME", regime)
 c2.metric("DRIVER", driver)
-c3.metric("HHI", f"{hhi:.2f}")
-c4.metric("INT", f"{intensidade:.2f}")
+c3.metric("FLOW", f"{flow_score:.3f}")
+c4.metric("HHI", f"{hhi:.2f}")
 
 st.divider()
 
 # =========================
-# LEFT PANEL
+# LEFT: SIGNAL
 # =========================
 left, right = st.columns([1, 2])
 
 with left:
-    st.subheader("BÚSSOLA")
+    st.subheader("WIN BIAS")
 
-    if forca > 0.2:
-        st.markdown("## 🟢 BUY FLOW")
-    elif forca < -0.2:
-        st.markdown("## 🔴 SELL FLOW")
+    if flow_score > 0.15:
+        st.markdown("## 🟢 BUY PRESSURE")
+    elif flow_score < -0.15:
+        st.markdown("## 🔴 SELL PRESSURE")
     else:
-        st.markdown("## ⚪ NEUTRAL")
+        st.markdown("## ⚪ NO EDGE")
 
-    st.caption(f"Força: {forca:.2f}")
+    st.caption("Flow Score = directional institutional pressure")
 
 # =========================
-# RIGHT PANEL (FIX STREAMLIT STYLE BUG)
+# RIGHT: BLOOMBERG HEAT MAP
 # =========================
 with right:
-    st.subheader("MARKET PULSE")
+    st.subheader("INSTITUTIONAL FLOW MAP")
 
     view = df.copy()
-    view["DIR"] = np.where(view["Impacto"] > 0, "▲", "▼")
-    view["Impacto"] = view["Impacto"].round(2)
 
-    # stable coloring (NO .style.applymap / NO Streamlit crash)
-    view["Impacto"] = view["Impacto"].apply(
-        lambda x: f"🟢 {x:.2f}" if x > 0 else f"🔴 {x:.2f}"
-    )
+    view["DIR"] = np.where(view["Impact"] > 0, "▲", "▼")
+
+    view = view.sort_values("Impact", ascending=False)
+
+    def color(x):
+        return "color:#00ff88;font-weight:700" if x > 0 else "color:#ff4d4d;font-weight:700"
+
+    styled = view.style.map(color, subset=["Impact"])
 
     st.dataframe(
-        view[["Ativo", "DIR", "Impacto"]].sort_values("Impacto", ascending=False),
+        styled,
         use_container_width=True,
         hide_index=True
     )
 
 # =========================
-# FOOTER
+# FLOW BAR (VISUAL INTUITION)
 # =========================
-st.caption(
-    f"v9.5 | Regime={regime} | Qualidade={qualidade:.2f} | Intensidade={intensidade:.2f} | HHI={hhi:.2f} | Consenso={consenso:.2f}"
-)
+st.subheader("FLOW INTENSITY (WIN DIRECTION PUSH)")
+
+chart_df = df.sort_values("Impact")
+
+st.bar_chart(chart_df.set_index("Asset")["Impact"])
+
+# =========================
+# LEGEND
+# =========================
+with st.expander("How to read this panel"):
+    st.markdown("""
+- **FLOW SCORE**: directional pressure from global assets into WIN
+- **HHI**: concentration of dominance (low = diversified, high = single driver)
+- **DRIVER**: asset currently controlling direction
+- **GREEN**: bullish pressure
+- **RED**: bearish pressure
+- WIN is **a consequence**, not a driver
+""")
+
+st.caption(f"v10.0 | Flow={flow_score:.3f} | HHI={hhi:.2f} | Regime={regime}")
