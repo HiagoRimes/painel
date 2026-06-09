@@ -6,17 +6,17 @@ import numpy as np
 # =========================
 # CONFIG
 # =========================
-st.set_page_config(page_title="MACA-QUANTI v10.3", layout="wide")
+st.set_page_config(page_title="MACA-QUANTI v11.0", layout="wide")
 
-st.title("🏛️ MACA-QUANTI v10.3 | FLUXO INSTITUCIONAL (DESK)")
+st.title("🏛️ MACA-QUANTI v11.0 | MESA INSTITUCIONAL")
 
 # =========================
-# ATIVOS (SEM SIGLAS)
+# UNIVERSO
 # =========================
 assets = {
     "FIXA11.SA": {"name": "JUROS", "corr": -1},
     "BRL=X":     {"name": "DÓLAR", "corr": -1},
-    "FIND11.SA": {"name": "SETOR FINANCEIRO", "corr": 1},
+    "FIND11.SA": {"name": "FINANCEIRO", "corr": 1},
     "EWZ":       {"name": "BOLSA BRASIL", "corr": 1},
     "ES=F":      {"name": "S&P 500", "corr": 1},
     "^VIX":      {"name": "VOLATILIDADE", "corr": -1},
@@ -27,7 +27,7 @@ assets = {
 # ENGINE
 # =========================
 @st.cache_data(ttl=60)
-def build():
+def engine():
     rows = []
 
     for k, v in assets.items():
@@ -39,10 +39,10 @@ def build():
         if isinstance(c, pd.DataFrame):
             c = c.iloc[:, 0]
 
-        ma = c.rolling(20).mean().iloc[-1]
+        mean = c.rolling(20).mean().iloc[-1]
         std = c.rolling(20).std().iloc[-1]
 
-        z = (c.iloc[-1] - ma) / max(std, 1e-9)
+        z = (c.iloc[-1] - mean) / max(std, 1e-9)
         impact = np.tanh(z) * v["corr"]
 
         rows.append({
@@ -52,24 +52,26 @@ def build():
 
     return pd.DataFrame(rows)
 
-df = build()
+df = engine()
 if df.empty:
     st.stop()
 
 # =========================
-# MÉTRICAS
+# METRICS CORE
 # =========================
-total = df["Impacto"].abs().sum() + 1e-9
-df["Peso"] = df["Impacto"].abs() / total
+total_abs = df["Impacto"].abs().sum() + 1e-9
 
+df["Peso"] = df["Impacto"].abs() / total_abs
 flow = (df["Impacto"] * df["Peso"]).sum()
+
 driver = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
 hhi = np.sum(df["Peso"] ** 2)
 
 # =========================
-# HEADER
+# HEADER (ESTILO MESA)
 # =========================
 c1, c2, c3 = st.columns(3)
+
 c1.metric("DRIVER", driver)
 c2.metric("FLUXO", f"{flow:.3f}")
 c3.metric("CONCENTRAÇÃO", f"{hhi:.2f}")
@@ -77,57 +79,55 @@ c3.metric("CONCENTRAÇÃO", f"{hhi:.2f}")
 st.divider()
 
 # =========================
-# DIREÇÃO DO MERCADO
+# BÚSSOLA SIMPLES
 # =========================
 st.subheader("DIREÇÃO DO MERCADO")
 
 if flow > 0.15:
-    st.success("MERCADO COM PRESSÃO DE ALTA")
+    st.markdown("### MERCADO COM VIÉS POSITIVO")
 elif flow < -0.15:
-    st.error("MERCADO COM PRESSÃO DE BAIXA")
+    st.markdown("### MERCADO COM VIÉS NEGATIVO")
 else:
-    st.warning("MERCADO SEM DIREÇÃO DEFINIDA")
+    st.markdown("### MERCADO SEM DIREÇÃO")
 
 st.divider()
 
 # =========================
-# MAPA DE IMPACTO (LISTA PROFISSIONAL)
+# TABELA LIMPA (MESA REAL)
 # =========================
-st.subheader("MAPA DE IMPACTO (RANKING DE FLUXO)")
+st.subheader("FLUXO INSTITUCIONAL")
 
 view = df.sort_values("Impacto", ascending=False).copy()
 
-max_abs = view["Impacto"].abs().max() + 1e-9
+def formatar(x):
+    sinal = "▲" if x > 0 else "▼"
+    return f"{sinal} {x:.3f}"
 
-def barra(x):
-    n = int((abs(x) / max_abs) * 20)
+def cor(x):
+    return "color:#00c853" if x > 0 else "color:#ff1744"
 
-    if x > 0:
-        return "🟩" * n
-    else:
-        return "🟥" * n
+view["IMPACTO"] = view["Impacto"].apply(formatar)
 
-view["FORÇA"] = view["Impacto"].apply(barra)
-view["IMPACTO"] = view["Impacto"].round(3)
+styled = view.style.applymap(cor, subset=["Impacto"])
 
 st.dataframe(
-    view[["Ativo", "FORÇA", "IMPACTO"]],
+    styled[["Ativo", "IMPACTO"]],
     use_container_width=True,
     hide_index=True
 )
 
 # =========================
-# RANKING SIMPLES (SEM GRÁFICO AZUL)
+# RANKING SECO (LEITURA RÁPIDA)
 # =========================
-st.subheader("RANKING DE DOMINÂNCIA")
+st.subheader("RANKING DE PRESSÃO")
 
-rank = df.sort_values("Impacto", ascending=True).copy()
-
-for i, row in rank.iterrows():
-    cor = "🟢" if row["Impacto"] > 0 else "🔴"
-    st.write(f"{cor} {row['Ativo']}  →  {row['Impacto']:.3f}")
+for _, row in view.iterrows():
+    if row["Impacto"].startswith("▲"):
+        st.write(f"🟢 {row['Ativo']}  {row['IMPACTO']}")
+    else:
+        st.write(f"🔴 {row['Ativo']}  {row['IMPACTO']}")
 
 # =========================
 # FOOTER
 # =========================
-st.caption(f"v10.3 | Flow={flow:.3f} | HHI={hhi:.2f}")
+st.caption(f"v11.0 | FLOW={flow:.3f} | HHI={hhi:.2f}")
