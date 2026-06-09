@@ -31,7 +31,7 @@ def load(ticker):
     return df["Close"].dropna()
 
 # =========================
-# FORÇA (SEM TANH - IMPORTANTE)
+# FORÇA (CORRIGIDO)
 # =========================
 def force(series):
     if series is None or len(series) < 10:
@@ -45,14 +45,22 @@ def force(series):
 
     retorno = (0.5 * r1 + 0.3 * r5 + 0.2 * r10)
 
-    vol = series.pct_change().rolling(20).std().iloc[-1]
+    # 🔥 CORREÇÃO CRÍTICA AQUI
+    vol_series = series.pct_change().rolling(20).std()
 
-    if pd.isna(vol) or vol < 1e-6:
+    vol = vol_series.iloc[-1] if len(vol_series) > 0 else np.nan
+
+    # força conversão escalar
+    if vol is None or pd.isna(vol):
+        vol = 0.001
+
+    vol = float(vol)
+
+    if vol < 1e-6:
         vol = 0.001
 
     score = retorno / vol
 
-    # 🔥 AQUI É A CORREÇÃO CRÍTICA
     return float(score)
 
 # =========================
@@ -70,7 +78,7 @@ for name, cfg in ativos.items():
 
     direction = np.sign(float(s.iloc[-1]) - float(s.iloc[-2]))
 
-    impact = f * cfg["corr"] * direction * 100
+    impact = float(f) * cfg["corr"] * float(direction) * 100
 
     rows.append({
         "Ativo": name,
@@ -78,6 +86,10 @@ for name, cfg in ativos.items():
     })
 
 df = pd.DataFrame(rows)
+
+if df.empty:
+    st.error("Sem dados")
+    st.stop()
 
 df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
 
@@ -114,4 +126,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI | versão sem compressão (debug real de sinal)")
+st.caption("MACA-QUANTI | correção de volatilidade aplicada")
