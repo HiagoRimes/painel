@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# Layout wide para aproveitar melhor as colunas
+# Configuração de Layout
 st.set_page_config(page_title="MACA-QUANTI ELITE v8.4", layout="wide")
 st.title("🏛️ MACA-QUANTI ELITE v8.4")
 
@@ -40,13 +40,21 @@ df['Abs_Impacto'] = df['Impacto'].abs()
 forca_total = df['Impacto'].sum() / (df['Abs_Impacto'].sum() + 1e-9)
 vix = df.loc[df['Ativo']=='VIX', 'Score'].values[0] if 'VIX' in df['Ativo'].values else 0
 spx = df.loc[df['Ativo']=='S&P500', 'Score'].values[0] if 'S&P500' in df['Ativo'].values else 0
+
+# Diagnósticos de Regime
 is_risk_off = (vix > 20) and (spx < 0)
 tem_conflito = (df['Impacto'].max() > 0) and (df['Impacto'].min() < 0)
 
-# Estrutura em 3 Colunas principais
+# Estrutura em 3 Colunas
 col_diag, col_bussola, col_grafico = st.columns([1, 1, 2])
 
-# Coluna 1: Diagnóstico
 with col_diag:
     st.subheader("Diagnóstico")
-    regime = "Risk-Off (Stress)" if is_
+    regime = "Risk-Off (Stress)" if is_risk_off else ("Compressão" if tem_conflito else "Direcional")
+    st.metric("Regime", regime)
+    st.metric("Driver Líder", df.loc[df['Abs_Impacto'].idxmax(), 'Ativo'])
+    st.caption("Conflito Macro: " + ("Sim" if tem_conflito else "Não"))
+
+with col_bussola:
+    st.subheader("Decisão")
+    if forca_total > 0.3: st.success(f"### 🟢 COMPRA\nForça: {forca_total:.2f}")
