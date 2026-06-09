@@ -4,11 +4,14 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
+# =========================
+# CONFIGURAÇÃO
+# =========================
 st.set_page_config(page_title="MACA-QUANTI", layout="wide")
 st.title("🏛️ MACA-QUANTI | Radar de Dominância")
 
 # =========================
-# UNIVERSO ESTÁVEL
+# UNIVERSO ESTÁVEL (Yahoo)
 # =========================
 ativos = {
     "JUROS LONGOS": {"ticker": "TLT", "corr": -1},
@@ -32,30 +35,47 @@ def baixar(ticker):
         df = yf.download(ticker, period="5d", interval="5m", progress=False)
         if df is None or df.empty:
             return None
-        return df["Close"].dropna()
+        serie = df["Close"].dropna()
+        if len(serie) < 30:
+            return None
+        return serie
     except:
         return None
 
-
 # =========================
-# SCORE
+# SCORE (ROBUSTO FINAL)
 # =========================
 def score(series):
     if series is None or len(series) < 30:
         return 0
 
-    series = series.dropna()
+    try:
+        series = series.dropna()
 
-    atual = series.iloc[-1]
-    media = series.rolling(30).mean().iloc[-1]
-    std = series.rolling(30).std().iloc[-1]
+        roll = series.rolling(30)
 
-    if pd.isna(std) or std == 0:
+        atual = float(series.iloc[-1])
+        media = float(roll.mean().iloc[-1])
+        std = roll.std().iloc[-1]
+
+        # força std escalar (corrige erro pandas/Series)
+        if isinstance(std, pd.Series):
+            std = float(std.iloc[-1])
+
+        std = float(std)
+
+        if std == 0 or np.isnan(std) or np.isinf(std):
+            return 0
+
+        z = (atual - media) / std
+
+        if np.isnan(z) or np.isinf(z):
+            return 0
+
+        return np.tanh(z)
+
+    except:
         return 0
-
-    z = (atual - media) / std
-    return np.tanh(z)
-
 
 # =========================
 # PROCESSAMENTO
@@ -71,7 +91,7 @@ for nome, cfg in ativos.items():
     s = score(serie)
 
     try:
-        direcao = np.sign(serie.iloc[-1] - serie.iloc[-2])
+        direcao = np.sign(float(serie.iloc[-1]) - float(serie.iloc[-2]))
     except:
         direcao = 0
 
@@ -85,11 +105,11 @@ for nome, cfg in ativos.items():
 df = pd.DataFrame(resultados)
 
 if df.empty:
-    st.error("Sem dados — Yahoo indisponível no momento")
+    st.error("Sem dados suficientes (Yahoo falhou)")
     st.stop()
 
 # =========================
-# PRESSÃO
+# PRESSÃO AGREGADA
 # =========================
 compra = df[df["Impacto"] > 0]["Impacto"].sum()
 venda = abs(df[df["Impacto"] < 0]["Impacto"].sum())
@@ -113,21 +133,49 @@ df = df.sort_values("Impacto", ascending=False)
 lider = df.iloc[0]["Ativo"]
 
 # =========================
-# UI
+# UI PRINCIPAL
 # =========================
 col1, col2, col3 = st.columns(3)
 
 col1.metric("Tendência", tendencia)
-col2.metric("Líder", lider)
-col3.metric("Hora", datetime.now().strftime("%H:%M:%S"))
+col2.metric("Líder do Momento", lider)
+col3.metric("Atualização", datetime.now().strftime("%H:%M:%S"))
 
 st.divider()
 
-st.write(f"Compra: {pct_compra:.2%}")
-st.write(f"Venda: {pct_venda:.2%}")
+st.subheader("Pressão Agregada")
+st.write(f"🟢 Compra: {pct_compra:.2%}")
+st.write(f"🔴 Venda: {pct_venda:.2%}")
 
 st.divider()
 
-st.dataframe(df, use_container_width=True)
+st.subheader("Ranking de Liderança")
 
-st.caption("MACA-QUANTI v1")
+def cor(v):
+    if v > 0:
+        return "🟢"
+    elif v < 0:
+        return "🔴"
+    return "🟡"
+
+df["Sinal"] = df["Impacto"].apply(cor)
+
+st.dataframe(
+    df[["Sinal", "Ativo", "Impacto"]],
+    use_container_width=True
+)
+
+st.divider()
+
+st.subheader("Regime de Mercado")
+
+if pct_compra > 0.6:
+    regime = "🟢 Direcional Altista"
+elif pct_venda > 0.6:
+    regime = "🔴 Direcional Baixista"
+else:
+    regime = "🟡 Neutro / Compressão"
+
+st.write(regime)
+
+st.caption("MACA-QUANTI v1 | Radar de dominância intradiária")
