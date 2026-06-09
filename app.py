@@ -3,13 +3,12 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import time
 
 st.set_page_config(page_title="MACA-QUANTI ESTÁVEL", layout="wide")
-st.title("🧠 MACA-QUANTI | Radar Estável (Anti-Bloqueio Yahoo)")
+st.title("📊 MACA-QUANTI | Radar Estável (Yahoo Safe)")
 
 # =========================
-# UNIVERSO
+# UNIVERSO (estável)
 # =========================
 ativos = {
     "SP500": {"ticker": "SPY", "corr": 1},
@@ -22,26 +21,26 @@ ativos = {
 }
 
 # =========================
-# CACHE FORTE (evita bloqueio)
+# LOAD ESTÁVEL
 # =========================
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=180)
 def load(ticker):
 
     try:
-        # 1ª tentativa (equilibrado e estável)
+        # 🔵 15m como base (menos falha)
         df = yf.download(
             ticker,
             period="5d",
             interval="15m",
             progress=False,
-            threads=False  # 🔥 IMPORTANTE: evita bloqueio por paralelismo
+            threads=False
         )
 
         if df is None or df.empty:
-            # fallback 1h (mais estável ainda)
+            # fallback seguro
             df = yf.download(
                 ticker,
-                period="10d",
+                period="20d",
                 interval="60m",
                 progress=False,
                 threads=False
@@ -61,7 +60,7 @@ def load(ticker):
         return None
 
 # =========================
-# FORÇA (ESTÁVEL, SEM OVERFIT)
+# FORÇA SIMPLIFICADA (ESTÁVEL)
 # =========================
 def force(series):
 
@@ -72,7 +71,7 @@ def force(series):
         r1 = (series.iloc[-1] / series.iloc[-2]) - 1
         r5 = (series.iloc[-1] / series.iloc[-6]) - 1
 
-        retorno = (0.6 * r1 + 0.4 * r5)
+        retorno = (0.7 * r1 + 0.3 * r5)
 
         vol = series.pct_change().rolling(20).std().iloc[-1]
         vol = float(vol) if pd.notna(vol) and vol > 1e-6 else 0.001
@@ -83,17 +82,13 @@ def force(series):
         return 0.0
 
 # =========================
-# PROCESSAMENTO SEQUENCIAL (ANTI-BLOQUEIO)
+# PROCESSAMENTO
 # =========================
 rows = []
 
 for name, cfg in ativos.items():
 
     s = load(cfg["ticker"])
-
-    # 🔥 pausa leve evita rate limit do Yahoo
-    time.sleep(0.3)
-
     if s is None:
         continue
 
@@ -114,7 +109,7 @@ for name, cfg in ativos.items():
 df = pd.DataFrame(rows)
 
 if df.empty:
-    st.error("Yahoo bloqueando requisições ou sem dados disponíveis no momento")
+    st.error("Sem dados Yahoo disponíveis no momento")
     st.stop()
 
 df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
@@ -128,7 +123,7 @@ leader = df.iloc[0]["Ativo"]
 leader_val = df.iloc[0]["Impacto"]
 
 # =========================
-# PRESSÃO GLOBAL
+# REGIME
 # =========================
 buy = df[df["Impacto"] > 0]["Impacto"].sum()
 sell = abs(df[df["Impacto"] < 0]["Impacto"].sum())
@@ -146,18 +141,13 @@ else:
     regime = "🟡 NEUTRO"
 
 # =========================
-# ALERTA
-# =========================
-alert = "🚨 SPIKE" if abs(leader_val) > 2 else "OK"
-
-# =========================
 # UI
 # =========================
 c1, c2, c3 = st.columns(3)
 
 c1.metric("Regime", regime)
 c2.metric("Líder", leader)
-c3.metric("Alerta", alert)
+c3.metric("Hora", datetime.now().strftime("%H:%M:%S"))
 
 st.divider()
 
@@ -168,4 +158,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI | versão estável anti-bloqueio Yahoo")
+st.caption("Radar estável Yahoo | sem intraday agressivo")
