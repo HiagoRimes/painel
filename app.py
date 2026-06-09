@@ -4,11 +4,11 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-st.set_page_config(page_title="MACA-QUANTI ESTÁVEL", layout="wide")
-st.title("📊 MACA-QUANTI | Radar Estável (Yahoo Safe)")
+st.set_page_config(page_title="MACA-QUANTI CORE", layout="wide")
+st.title("🏛️ MACA-QUANTI | Correlação Estrutural Estável")
 
 # =========================
-# UNIVERSO (estável)
+# UNIVERSO
 # =========================
 ativos = {
     "SP500": {"ticker": "SPY", "corr": 1},
@@ -21,37 +21,27 @@ ativos = {
 }
 
 # =========================
-# LOAD ESTÁVEL
+# DADOS ESTÁVEIS (SEM INTRADAY FRÁGIL)
 # =========================
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=300)
 def load(ticker):
 
     try:
-        # 🔵 15m como base (menos falha)
+        # base mais confiável do Yahoo
         df = yf.download(
             ticker,
-            period="5d",
-            interval="15m",
+            period="20d",
+            interval="1h",
             progress=False,
             threads=False
         )
-
-        if df is None or df.empty:
-            # fallback seguro
-            df = yf.download(
-                ticker,
-                period="20d",
-                interval="60m",
-                progress=False,
-                threads=False
-            )
 
         if df is None or df.empty or "Close" not in df:
             return None
 
         close = pd.to_numeric(df["Close"], errors="coerce").dropna()
 
-        if len(close) < 10:
+        if len(close) < 20:
             return None
 
         return close
@@ -60,18 +50,21 @@ def load(ticker):
         return None
 
 # =========================
-# FORÇA SIMPLIFICADA (ESTÁVEL)
+# FORÇA ESTRUTURAL (SEM RUÍDO)
 # =========================
 def force(series):
 
     try:
-        if series is None or len(series) < 10:
-            return 0.0
-
+        # tendência curta (intraday leve)
         r1 = (series.iloc[-1] / series.iloc[-2]) - 1
+
+        # tendência média
         r5 = (series.iloc[-1] / series.iloc[-6]) - 1
 
-        retorno = (0.7 * r1 + 0.3 * r5)
+        # tendência estrutural
+        r20 = (series.iloc[-1] / series.iloc[-20]) - 1
+
+        retorno = (0.4 * r1 + 0.3 * r5 + 0.3 * r20)
 
         vol = series.pct_change().rolling(20).std().iloc[-1]
         vol = float(vol) if pd.notna(vol) and vol > 1e-6 else 0.001
@@ -103,30 +96,30 @@ for name, cfg in ativos.items():
 
     rows.append({
         "Ativo": name,
-        "Impacto": float(impact)
+        "Força": float(impact)
     })
 
 df = pd.DataFrame(rows)
 
 if df.empty:
-    st.error("Sem dados Yahoo disponíveis no momento")
+    st.error("Sem dados Yahoo disponíveis (instabilidade temporária)")
     st.stop()
 
-df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
+df["Força"] = pd.to_numeric(df["Força"], errors="coerce").fillna(0.0)
 
 # =========================
 # LÍDER
 # =========================
-df = df.sort_values("Impacto", ascending=False)
+df = df.sort_values("Força", ascending=False)
 
 leader = df.iloc[0]["Ativo"]
-leader_val = df.iloc[0]["Impacto"]
+leader_val = df.iloc[0]["Força"]
 
 # =========================
-# REGIME
+# REGIME DE MERCADO
 # =========================
-buy = df[df["Impacto"] > 0]["Impacto"].sum()
-sell = abs(df[df["Impacto"] < 0]["Impacto"].sum())
+buy = df[df["Força"] > 0]["Força"].sum()
+sell = abs(df[df["Força"] < 0]["Força"].sum())
 
 total = buy + sell + 1e-9
 
@@ -134,11 +127,19 @@ pct_buy = buy / total
 pct_sell = sell / total
 
 if pct_buy > 0.6:
-    regime = "🟢 RISK ON"
+    regime = "🟢 RISK ON (COMPRA DOMINANTE)"
 elif pct_sell > 0.6:
-    regime = "🔴 RISK OFF"
+    regime = "🔴 RISK OFF (VENDA DOMINANTE)"
 else:
-    regime = "🟡 NEUTRO"
+    regime = "🟡 NEUTRO / COMPRESSÃO"
+
+# =========================
+# ALERTA DE DOMINÂNCIA
+# =========================
+if abs(leader_val) > 2:
+    alert = "🚨 FORÇA EXTREMA NO LÍDER"
+else:
+    alert = "OK"
 
 # =========================
 # UI
@@ -147,7 +148,7 @@ c1, c2, c3 = st.columns(3)
 
 c1.metric("Regime", regime)
 c2.metric("Líder", leader)
-c3.metric("Hora", datetime.now().strftime("%H:%M:%S"))
+c3.metric("Alerta", alert)
 
 st.divider()
 
@@ -158,4 +159,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("Radar estável Yahoo | sem intraday agressivo")
+st.caption("MACA-QUANTI | correlação estrutural estável (1h + 20d)")
