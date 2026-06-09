@@ -42,32 +42,34 @@ def baixar(ticker, period="5d", interval="1m"):
 
 
 # =========================
-# SCORE DE MOVIMENTO ANORMAL
+# MOVIMENTO ANORMAL (CORRIGIDO)
 # =========================
 def movimento_anormal(series):
-    if len(series) < 50:
+    if series is None or len(series) < 50:
         return 0
 
-    atual = series.iloc[-1]
-    media = series.rolling(50).mean().iloc[-1]
-    std = series.rolling(50).std().iloc[-1]
+    roll = series.rolling(50)
 
-    if std == 0 or np.isnan(std):
+    atual = float(series.iloc[-1])
+    media = float(roll.mean().iloc[-1])
+    std = roll.std().iloc[-1]
+
+    if pd.isna(std) or std == 0:
         return 0
 
-    z = (atual - media) / std
+    z = (atual - media) / float(std)
     return np.tanh(z)
 
 
 # =========================
-# PROCESSAMENTO PRINCIPAL
+# PROCESSAMENTO
 # =========================
 resultados = []
 
 for nome, cfg in ativos.items():
 
     serie = baixar(cfg["ticker"])
-    if serie is None:
+    if serie is None or len(serie) < 10:
         continue
 
     score = movimento_anormal(serie)
@@ -86,7 +88,7 @@ for nome, cfg in ativos.items():
 df = pd.DataFrame(resultados)
 
 if df.empty:
-    st.error("Sem dados disponíveis")
+    st.error("Sem dados suficientes no momento")
     st.stop()
 
 # =========================
@@ -110,11 +112,11 @@ else:
     tendencia = "🟡 NEUTRO"
 
 # =========================
-# ÍNDICE (WIN proxy)
+# ÍNDICE
 # =========================
 indice = baixar(indice_ref)
 
-if indice is not None:
+if indice is not None and len(indice) > 2:
     win_score = np.sign(indice.iloc[-1] - indice.iloc[-2])
 else:
     win_score = 0
@@ -126,7 +128,7 @@ df = df.sort_values("Impacto", ascending=False)
 lider = df.iloc[0]["Ativo"]
 
 # =========================
-# UI PRINCIPAL
+# UI
 # =========================
 col1, col2, col3 = st.columns(3)
 
@@ -179,7 +181,7 @@ else:
     st.dataframe(alertas[["Ativo", "Impacto"]])
 
 # =========================
-# REGIME SIMPLES
+# REGIME
 # =========================
 st.divider()
 st.subheader("Regime de Mercado")
