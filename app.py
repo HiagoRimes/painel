@@ -11,7 +11,7 @@ st.set_page_config(page_title="MACA-QUANTI ELITE v1", layout="wide")
 st.title("🏛️ MACA-QUANTI ELITE v1 | Radar de Dominância de Mercado")
 
 # =========================
-# UNIVERSO DE ATIVOS
+# UNIVERSO
 # =========================
 ativos = {
     "JUROS LONGOS": {"ticker": "TLT", "corr": -1.0},
@@ -28,45 +28,48 @@ ativos = {
 indice_ref = "^BVSP"
 
 # =========================
-# DADOS
+# DADOS (ROBUSTO)
 # =========================
 @st.cache_data(ttl=60)
-def baixar(ticker, period="5d", interval="1m"):
-    try:
-        df = yf.download(ticker, period=period, interval=interval, progress=False)
-        if df is None or df.empty:
-            return None
-        serie = df["Close"].dropna()
-        if len(serie) < 5:
-            return None
-        return serie
-    except:
-        return None
+def baixar(ticker):
+    for interval in ["1m", "5m"]:
+        try:
+            df = yf.download(
+                ticker,
+                period="5d",
+                interval=interval,
+                progress=False
+            )
+
+            if df is not None and not df.empty:
+                serie = df["Close"].dropna()
+
+                if len(serie) > 30:
+                    return serie
+
+        except:
+            continue
+
+    return None
 
 
 # =========================
-# MOVIMENTO ANORMAL (ROBUSTO)
+# MOVIMENTO ANORMAL
 # =========================
 def movimento_anormal(series):
+    if series is None or len(series) < 50:
+        return 0
+
     try:
-        if series is None:
-            return 0
-
         series = series.dropna()
-
-        if len(series) < 50:
-            return 0
 
         roll = series.rolling(50)
 
-        atual = series.iloc[-1]
-        media = roll.mean().iloc[-1]
-        std = roll.std().iloc[-1]
+        atual = float(series.iloc[-1])
+        media = float(roll.mean().iloc[-1])
+        std = float(roll.std().iloc[-1])
 
-        if pd.isna(atual) or pd.isna(media) or pd.isna(std):
-            return 0
-
-        if std == 0 or std is None:
+        if std == 0 or np.isnan(std):
             return 0
 
         z = (atual - media) / std
@@ -88,12 +91,12 @@ resultados = []
 for nome, cfg in ativos.items():
 
     serie = baixar(cfg["ticker"])
+
     if serie is None:
         continue
 
     score = movimento_anormal(serie)
 
-    # direção curta
     try:
         direcao = np.sign(float(serie.iloc[-1]) - float(serie.iloc[-2]))
     except:
@@ -101,30 +104,36 @@ for nome, cfg in ativos.items():
 
     impacto = score * cfg["corr"] * direcao * 100
 
+    if abs(impacto) < 1:
+        continue
+
     resultados.append({
         "Ativo": nome,
         "Impacto": impacto,
-        "Direção": direcao
     })
 
 df = pd.DataFrame(resultados)
 
 if df.empty:
-    st.error("Sem dados suficientes no momento")
+    st.error("Sem dados suficientes — Yahoo falhou na coleta")
     st.stop()
 
 # =========================
-# PRESSÃO AGREGADA
+# PRESSÃO REAL
 # =========================
 df["Pressão"] = df["Impacto"]
 
 compra = df[df["Pressão"] > 0]["Pressão"].sum()
 venda = abs(df[df["Pressão"] < 0]["Pressão"].sum())
 
-total = compra + venda + 1e-9
+total = compra + venda
 
-pct_compra = compra / total
-pct_venda = venda / total
+if total == 0:
+    pct_compra = 0
+    pct_venda = 0
+else:
+    pct_compra = compra / total
+    pct_venda = venda / total
 
 if pct_compra > 0.55:
     tendencia = "🟢 TENDÊNCIA DE COMPRA"
@@ -134,17 +143,7 @@ else:
     tendencia = "🟡 NEUTRO"
 
 # =========================
-# ÍNDICE
-# =========================
-indice = baixar(indice_ref)
-
-if indice is not None and len(indice) > 2:
-    win_score = np.sign(indice.iloc[-1] - indice.iloc[-2])
-else:
-    win_score = 0
-
-# =========================
-# LIDERANÇA
+# LÍDER
 # =========================
 df = df.sort_values("Impacto", ascending=False)
 lider = df.iloc[0]["Ativo"]
@@ -160,39 +159,23 @@ col3.metric("Atualização", datetime.now().strftime("%H:%M:%S"))
 
 st.divider()
 
-# =========================
-# PRESSÃO
-# =========================
 st.subheader("Pressão Agregada")
-
 st.write(f"🟢 Compra: {pct_compra:.2%}")
 st.write(f"🔴 Venda: {pct_venda:.2%}")
 
 st.divider()
 
-# =========================
-# RANKING
-# =========================
 st.subheader("Ranking de Liderança")
 
 def cor(v):
-    if v > 0:
-        return "🟢"
-    elif v < 0:
-        return "🔴"
-    return "🟡"
+    return "🟢" if v > 0 else "🔴" if v < 0 else "🟡"
 
 df["Sinal"] = df["Impacto"].apply(cor)
 
-st.dataframe(
-    df[["Sinal", "Ativo", "Impacto"]].reset_index(drop=True),
-    use_container_width=True
-)
+st.dataframe(df, use_container_width=True)
 
-# =========================
-# ALERTAS
-# =========================
 st.divider()
+
 st.subheader("Alertas")
 
 alertas = df[abs(df["Impacto"]) > 70]
@@ -200,12 +183,10 @@ alertas = df[abs(df["Impacto"]) > 70]
 if alertas.empty:
     st.write("Sem movimentos extremos no momento.")
 else:
-    st.dataframe(alertas[["Ativo", "Impacto"]])
+    st.dataframe(alertas)
 
-# =========================
-# REGIME
-# =========================
 st.divider()
+
 st.subheader("Regime de Mercado")
 
 if pct_compra > 0.6:
@@ -217,7 +198,4 @@ else:
 
 st.write(regime)
 
-# =========================
-# FOOTER
-# =========================
-st.caption("v1 | MACA-QUANTI | Radar de dominância e correlação intradiária")
+st.caption("v1 | MACA-QUANTI")
