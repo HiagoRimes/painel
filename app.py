@@ -1,74 +1,64 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
 import time
 
 st.set_page_config(page_title="MACA-QUANTI PRO", layout="centered")
 st.title("🍎 MACA-QUANTI PRO")
 
-# Dicionário atualizado com o DI Futuro (FIXA11.SA como proxy)
+# Dicionário de ativos: Nome, Correlação com WIN, Peso
 vies_ativos = {
-    "^BVSP": ("IBOV", 1.0, 0.2), 
-    "BRL=X": ("DÓLAR", -1.0, 0.3),
-    "FIXA11.SA": ("DI FUTURO", -1.0, 0.25), # DI Adicionado com peso alto
-    "EWZ": ("EWZ", 1.0, 0.05), 
-    "ES=F": ("S&P500", 1.0, 0.1), 
-    "NQ=F": ("NASDAQ", 1.0, 0.1), 
-    "^VIX": ("VIX", -1.0, 0.0)
+    "^BVSP":   {"nome": "IBOV",      "mult":  1.0, "peso": 0.15},
+    "BRL=X":   {"nome": "DÓLAR",     "mult": -1.0, "peso": 0.30},
+    "FIXA11.SA":{"nome": "DI FUTURO", "mult": -1.0, "peso": 0.35},
+    "EWZ":     {"nome": "EWZ",       "mult":  1.0, "peso": 0.05},
+    "ES=F":    {"nome": "S&P500",    "mult":  1.0, "peso": 0.10},
+    "NQ=F":    {"nome": "NASDAQ",    "mult":  1.0, "peso": 0.05},
 }
 
-def get_data(cod):
+def get_stats(cod):
     df = yf.download(cod, period="30d", interval="1d", progress=False)
-    # Correção para tratar o retorno do yfinance conforme versões recentes
-    c = df['Close']
-    if isinstance(c, pd.DataFrame):
-        c = c.iloc[:, 0]
-    
-    # Tratamento para garantir que c é Series numérica
+    c = df['Close'].iloc[:, 0] if isinstance(df['Close'], pd.DataFrame) else df['Close']
     c = pd.to_numeric(c, errors='coerce').dropna()
-    
-    if len(c) < 20: return 0, 0
-    
     z = (float(c.iloc[-1]) - float(c.rolling(20).mean().iloc[-1])) / float(c.rolling(20).std().iloc[-1])
     return float(c.iloc[-1]), z
 
 # Processamento
-dados_win = []
-for cod, (nome, mult, peso) in vies_ativos.items():
-    preco, z = get_data(cod)
-    forca = z * mult
-    dados_win.append({"Ativo": nome, "Preço": preco, "Forca": forca, "Peso": peso})
-    time.sleep(0.2)
+dados = []
+for cod, config in vies_ativos.items():
+    preco, z = get_stats(cod)
+    forca_bruta = z * config['mult']
+    forca_ponderada = forca_bruta * config['peso']
+    # Lógica de correlação simples: Se Z do ativo e Z do IBOV estão em direções compatíveis com a correlação
+    status = "🟢 Confirmando" if (z * config['mult']) > 0 else "🟡 Divergente"
+    dados.append({
+        "Ativo": config['nome'],
+        "Preço": preco,
+        "Forca": forca_bruta,
+        "Contrib": abs(forca_ponderada),
+        "Status": status
+    })
 
-df_win = pd.DataFrame(dados_win)
-vies_ponderado = (df_win['Forca'] * df_win['Peso']).sum()
+df = pd.DataFrame(dados)
+total_abs = df['Contrib'].sum()
+df['Dominancia'] = (df['Contrib'] / total_abs) * 100
 
-# Exibição
+# Painel Superior
 st.subheader("🎯 Viés para o WIN")
-if vies_ponderado > 0.1: st.success(f"VIÉS ALTISTA (Força Ponderada: {vies_ponderado:.2f})")
-elif vies_ponderado < -0.1: st.error(f"VIÉS BAIXISTA (Força Ponderada: {vies_ponderado:.2f})")
+vies_total = (df['Forca'] * [v['peso'] for v in vies_ativos.values()]).sum()
+if vies_total > 0.1: st.success(f"VIÉS ALTISTA (Força: {vies_total:.2f})")
+elif vies_total < -0.1: st.error(f"VIÉS BAIXISTA (Força: {vies_total:.2f})")
 else: st.info("MERCADO NEUTRO")
 
-st.table(df_win[['Ativo', 'Preço', 'Forca']])
+# Tabela Integrada de Dominância e Correlação
+st.write("### 🏆 Ranking de Dominância & Correlação")
+st.table(df[['Ativo', 'Dominancia', 'Status']].assign(Dominancia=df['Dominancia'].map('{:.1f}%'.format)))
 
 # Carteira
-st.subheader("💼 Carteira")
+st.write("### 💼 Minha Carteira")
 carteira = {"B3SA3.SA": "B3SA3", "FIND11.SA": "IFNC", "MATB11.SA": "IMAT"}
 df_cart = []
 for cod, nome in carteira.items():
-    p, z = get_data(cod)
-    df_cart.append({"Ativo": nome, "Preço": p, "Z": z})
+    p, z = get_stats(cod)
+    df_cart.append({"Ativo": nome, "Preço": p, "Z-Score": round(z, 2)})
 st.table(pd.DataFrame(df_cart))
-
-# Gráfico
-st.subheader("📈 IBOV (30d)")
-df_g = yf.download("^BVSP", period="30d", interval="1d", progress=False)
-c_g = df_g['Close'].iloc[:, 0] if isinstance(df_g['Close'], pd.DataFrame) else df_g['Close']
-
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=df_g.index, y=c_g, name="Preço", line=dict(color='#00ff00')))
-fig.add_trace(go.Scatter(x=df_g.index, y=c_g.rolling(5).mean(), name="Média 5", line=dict(color='yellow')))
-fig.update_layout(height=250, margin=dict(l=0,r=0,t=0,b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-st.plotly_chart(fig, use_container_width=True)
