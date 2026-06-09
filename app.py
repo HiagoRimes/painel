@@ -4,11 +4,11 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-st.set_page_config(page_title="MACA-QUANTI", layout="wide")
-st.title("🏛️ MACA-QUANTI | Correlação Estável")
+st.set_page_config(page_title="MACA-QUANTI RADAR", layout="wide")
+st.title("⚡ MACA-QUANTI | Radar de Spike de Correlação")
 
 # =========================
-# UNIVERSO
+# UNIVERSO (ativos líquidos)
 # =========================
 ativos = {
     "SP500": {"ticker": "SPY", "corr": 1},
@@ -21,39 +21,24 @@ ativos = {
 }
 
 # =========================
-# LOAD (ROBUSTO PARA YAHOO QUEBRADO)
+# DADOS (intraday curto)
 # =========================
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=30)
 def load(ticker):
-
     try:
         df = yf.download(
             ticker,
-            period="10d",
-            interval="15m",
-            progress=False,
-            group_by="column",
-            auto_adjust=False,
-            threads=True
+            period="2d",
+            interval="5m",
+            progress=False
         )
 
-        if df is None or df.empty:
+        if df is None or df.empty or "Close" not in df:
             return None
 
-        # 🔥 CORREÇÃO CRÍTICA: força estrutura 1D confiável
-        if "Close" not in df.columns:
-            return None
+        close = pd.to_numeric(df["Close"], errors="coerce").dropna()
 
-        close = df["Close"]
-
-        # caso venha DataFrame (MultiIndex bug do Yahoo)
-        if isinstance(close, pd.DataFrame):
-            close = close.iloc[:, 0]
-
-        close = pd.Series(close).astype(float)
-        close = close.replace([np.inf, -np.inf], np.nan).dropna()
-
-        if len(close) < 20:
+        if len(close) < 30:
             return None
 
         return close
@@ -62,24 +47,25 @@ def load(ticker):
         return None
 
 # =========================
-# FORÇA
+# SPIKE DE FORÇA (ACELERAÇÃO)
 # =========================
-def force(series):
-
-    if series is None or len(series) < 10:
-        return 0.0
+def spike_force(series):
 
     try:
-        r1 = (series.iloc[-1] / series.iloc[-2]) - 1
-        r5 = (series.iloc[-1] / series.iloc[-5]) - 1
-        r10 = (series.iloc[-1] / series.iloc[-10]) - 1
+        # retorno curto (momentum imediato)
+        r_now = (series.iloc[-1] / series.iloc[-2]) - 1
 
-        retorno = (0.5 * r1 + 0.3 * r5 + 0.2 * r10)
+        # retorno recente (baseline curto)
+        r_prev = (series.iloc[-6] / series.iloc[-12]) - 1
 
-        vol = series.pct_change().rolling(20).std().iloc[-1]
+        # aceleração = mudança de ritmo
+        accel = r_now - r_prev
+
+        # volatilidade curta
+        vol = series.pct_change().rolling(10).std().iloc[-1]
         vol = float(vol) if pd.notna(vol) and vol > 1e-6 else 0.001
 
-        return float(retorno / vol)
+        return float(accel / vol)
 
     except:
         return 0.0
@@ -95,59 +81,81 @@ for name, cfg in ativos.items():
     if s is None:
         continue
 
-    f = force(s)
+    spike = spike_force(s)
 
     try:
         direction = np.sign(float(s.iloc[-1]) - float(s.iloc[-2]))
     except:
         direction = 0
 
-    impact = float(f) * cfg["corr"] * float(direction) * 100
+    impact = spike * cfg["corr"] * direction * 100
 
     rows.append({
         "Ativo": name,
-        "Impacto": float(impact)
+        "Spike": float(impact)
     })
 
 df = pd.DataFrame(rows)
 
 if df.empty:
-    st.error("Sem dados Yahoo válidos")
+    st.error("Sem dados intraday do Yahoo")
     st.stop()
 
-df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
+# =========================
+# NORMALIZAÇÃO
+# =========================
+df["Spike"] = pd.to_numeric(df["Spike"], errors="coerce").fillna(0.0)
 
 # =========================
-# PRESSÃO
+# RANKING DE LIDERANÇA
 # =========================
-buy = df.loc[df["Impacto"] > 0, "Impacto"].sum()
-sell = abs(df.loc[df["Impacto"] < 0, "Impacto"].sum())
+df = df.sort_values("Spike", ascending=False)
+
+leader = df.iloc[0]["Ativo"]
+leader_value = df.iloc[0]["Spike"]
+
+# =========================
+# REGIME INSTANTÂNEO
+# =========================
+buy = df[df["Spike"] > 0]["Spike"].sum()
+sell = abs(df[df["Spike"] < 0]["Spike"].sum())
 
 total = buy + sell + 1e-9
 
 pct_buy = buy / total
 pct_sell = sell / total
 
-trend = "🟢 COMPRA" if pct_buy > 0.55 else "🔴 VENDA" if pct_sell > 0.55 else "🟡 NEUTRO"
+if pct_buy > 0.6:
+    regime = "🟢 SPIKE DE COMPRA"
+elif pct_sell > 0.6:
+    regime = "🔴 SPIKE DE VENDA"
+else:
+    regime = "🟡 COMPRESSÃO"
 
-leader = df.sort_values("Impacto", ascending=False).iloc[0]["Ativo"]
+# =========================
+# ALERTA DE DOMINÂNCIA
+# =========================
+if abs(leader_value) > 2:
+    alert = "🚨 MOVIMENTO ANORMAL NO LÍDER"
+else:
+    alert = "OK"
 
 # =========================
 # UI
 # =========================
 c1, c2, c3 = st.columns(3)
 
-c1.metric("Tendência", trend)
-c2.metric("Líder", leader)
-c3.metric("Hora", datetime.now().strftime("%H:%M:%S"))
+c1.metric("Regime", regime)
+c2.metric("Líder Spike", leader)
+c3.metric("Alerta", alert)
 
 st.divider()
 
-st.write(f"🟢 Compra: {pct_buy:.2%}")
-st.write(f"🔴 Venda: {pct_sell:.2%}")
+st.write(f"🟢 Pressão de Compra: {pct_buy:.2%}")
+st.write(f"🔴 Pressão de Venda: {pct_sell:.2%}")
 
 st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI | versão blindada Yahoo MultiIndex")
+st.caption("Radar de Spike | aceleração intraday em tempo real")
