@@ -3,40 +3,51 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import time
 
-st.set_page_config(page_title="MACA-QUANTI HÍBRIDO", layout="wide")
-st.title("⚡ MACA-QUANTI | Radar Híbrido de Correlação")
+st.set_page_config(page_title="MACA-QUANTI ESTÁVEL", layout="wide")
+st.title("🧠 MACA-QUANTI | Radar Estável (Anti-Bloqueio Yahoo)")
 
 # =========================
 # UNIVERSO
 # =========================
 ativos = {
-    "SP500": {"ticker": "SPY", "corr": 1, "mode": "fast"},
-    "NASDAQ": {"ticker": "QQQ", "corr": 1, "mode": "fast"},
-    "BRASIL": {"ticker": "EWZ", "corr": 1, "mode": "mid"},
-    "FINANCEIRO": {"ticker": "XLF", "corr": 1, "mode": "mid"},
-    "TECNOLOGIA": {"ticker": "XLK", "corr": 1, "mode": "mid"},
-    "MATERIAIS": {"ticker": "XLB", "corr": 1, "mode": "mid"},
-    "JUROS": {"ticker": "TLT", "corr": -1, "mode": "mid"},
+    "SP500": {"ticker": "SPY", "corr": 1},
+    "NASDAQ": {"ticker": "QQQ", "corr": 1},
+    "BRASIL": {"ticker": "EWZ", "corr": 1},
+    "FINANCEIRO": {"ticker": "XLF", "corr": 1},
+    "TECNOLOGIA": {"ticker": "XLK", "corr": 1},
+    "MATERIAIS": {"ticker": "XLB", "corr": 1},
+    "JUROS": {"ticker": "TLT", "corr": -1},
 }
 
 # =========================
-# LOAD HÍBRIDO (FALLBACK REAL)
+# CACHE FORTE (evita bloqueio)
 # =========================
-@st.cache_data(ttl=60)
-def load(ticker, mode):
+@st.cache_data(ttl=120)
+def load(ticker):
 
     try:
-        if mode == "fast":
-            df = yf.download(ticker, period="2d", interval="5m", progress=False)
-        else:
-            df = yf.download(ticker, period="10d", interval="15m", progress=False)
+        # 1ª tentativa (equilibrado e estável)
+        df = yf.download(
+            ticker,
+            period="5d",
+            interval="15m",
+            progress=False,
+            threads=False  # 🔥 IMPORTANTE: evita bloqueio por paralelismo
+        )
 
-        # fallback automático se vazio
         if df is None or df.empty:
-            df = yf.download(ticker, period="30d", interval="60m", progress=False)
+            # fallback 1h (mais estável ainda)
+            df = yf.download(
+                ticker,
+                period="10d",
+                interval="60m",
+                progress=False,
+                threads=False
+            )
 
-        if df is None or df.empty:
+        if df is None or df.empty or "Close" not in df:
             return None
 
         close = pd.to_numeric(df["Close"], errors="coerce").dropna()
@@ -50,54 +61,60 @@ def load(ticker, mode):
         return None
 
 # =========================
-# SPIKE (leve + estável)
+# FORÇA (ESTÁVEL, SEM OVERFIT)
 # =========================
-def spike(series):
+def force(series):
 
     try:
-        r_now = (series.iloc[-1] / series.iloc[-2]) - 1
-        r_prev = (series.iloc[-6] / series.iloc[-12]) - 1
+        if series is None or len(series) < 10:
+            return 0.0
 
-        accel = r_now - r_prev
+        r1 = (series.iloc[-1] / series.iloc[-2]) - 1
+        r5 = (series.iloc[-1] / series.iloc[-6]) - 1
 
-        vol = series.pct_change().rolling(10).std().iloc[-1]
+        retorno = (0.6 * r1 + 0.4 * r5)
+
+        vol = series.pct_change().rolling(20).std().iloc[-1]
         vol = float(vol) if pd.notna(vol) and vol > 1e-6 else 0.001
 
-        return float(accel / vol)
+        return float(retorno / vol)
 
     except:
         return 0.0
 
 # =========================
-# PROCESSAMENTO
+# PROCESSAMENTO SEQUENCIAL (ANTI-BLOQUEIO)
 # =========================
 rows = []
 
 for name, cfg in ativos.items():
 
-    s = load(cfg["ticker"], cfg["mode"])
+    s = load(cfg["ticker"])
+
+    # 🔥 pausa leve evita rate limit do Yahoo
+    time.sleep(0.3)
+
     if s is None:
         continue
 
-    sp = spike(s)
+    f = force(s)
 
     try:
         direction = np.sign(float(s.iloc[-1]) - float(s.iloc[-2]))
     except:
         direction = 0
 
-    impact = sp * cfg["corr"] * direction * 100
+    impact = f * cfg["corr"] * direction * 100
 
     rows.append({
         "Ativo": name,
-        "Impacto": float(impact),
-        "Modo": cfg["mode"]
+        "Impacto": float(impact)
     })
 
 df = pd.DataFrame(rows)
 
 if df.empty:
-    st.error("Sem dados Yahoo mesmo com fallback")
+    st.error("Yahoo bloqueando requisições ou sem dados disponíveis no momento")
     st.stop()
 
 df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
@@ -108,7 +125,7 @@ df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
 df = df.sort_values("Impacto", ascending=False)
 
 leader = df.iloc[0]["Ativo"]
-leader_value = df.iloc[0]["Impacto"]
+leader_val = df.iloc[0]["Impacto"]
 
 # =========================
 # PRESSÃO GLOBAL
@@ -122,19 +139,16 @@ pct_buy = buy / total
 pct_sell = sell / total
 
 if pct_buy > 0.6:
-    regime = "🟢 RISK ON (COMPRA)"
+    regime = "🟢 RISK ON"
 elif pct_sell > 0.6:
-    regime = "🔴 RISK OFF (VENDA)"
+    regime = "🔴 RISK OFF"
 else:
-    regime = "🟡 NEUTRO / COMPRESSÃO"
+    regime = "🟡 NEUTRO"
 
 # =========================
-# ALERTA DE SPIKE
+# ALERTA
 # =========================
-if abs(leader_value) > 2:
-    alert = "🚨 SPIKE FORTE DETECTADO"
-else:
-    alert = "OK"
+alert = "🚨 SPIKE" if abs(leader_val) > 2 else "OK"
 
 # =========================
 # UI
@@ -154,4 +168,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI | versão híbrida estável (5m + 15m + fallback 60m)")
+st.caption("MACA-QUANTI | versão estável anti-bloqueio Yahoo")
