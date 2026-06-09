@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 
 # Configuração da página
 st.set_page_config(page_title="MACA-QUANTI ELITE", layout="centered")
@@ -18,16 +19,20 @@ vies_ativos = {
     "NQ=F":      {"nome": "NASDAQ",    "corr":  1.0, "peso": 0.4},
 }
 
-# 2. Gráfico de Variação % (Fim da "linha reta")
-st.subheader("📊 Gráfico IBOV (Variação %)")
+# 2. Gráfico de Pontos Reais (Escala Otimizada via Plotly)
+st.subheader("📊 Gráfico IBOV (Pontos)")
 try:
     df_chart = yf.download("^BVSP", period="1d", interval="5m", progress=False)
     if not df_chart.empty:
-        # Plotando a variação percentual para dar sensibilidade ao gráfico
-        variacao_pct = (df_chart['Close'] / df_chart['Close'].iloc[0] - 1) * 100
-        st.line_chart(variacao_pct)
+        fig = go.Figure(data=[go.Scatter(x=df_chart.index, y=df_chart['Close'], mode='lines', line=dict(color='#1f77b4'))])
+        # Ajuste dinâmico do eixo Y para focar na variação real de pontos
+        fig.update_layout(
+            margin=dict(l=20, r=20, t=30, b=20),
+            yaxis_range=[df_chart['Close'].min()-100, df_chart['Close'].max()+100]
+        )
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Gráfico em processamento.")
+        st.info("Gráfico aguardando dados.")
 except:
     st.info("Erro ao carregar gráfico.")
 
@@ -63,7 +68,7 @@ alinh = df['Score'].mean()
 st.write(f"### **ALINHAMENTO GERAL: {abs(alinh):.1f}%**")
 st.progress(min(abs(alinh) / 100, 1))
 
-# 5. Tabela Limpa (Sem numeração, largura total)
+# 5. Tabela Limpa (Sem numeração/índice)
 df['Status'] = df.apply(lambda x: "🟢 Conf" if x['Score'] * x['Corr'] > 0 else ("🔴 Quebra" if x['Score'] * x['Corr'] < -50 else "🟡 Div"), axis=1)
 tabela_final = df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score', 'Status']].rename(columns={'Pct_Dominancia': 'Dom %'})
 st.dataframe(tabela_final, hide_index=True, use_container_width=True)
@@ -71,6 +76,6 @@ st.dataframe(tabela_final, hide_index=True, use_container_width=True)
 # 6. Rodapé
 st.write("---")
 with st.expander("📖 Guia de Leitura"):
-    st.write("O gráfico mostra a variação percentual do IBOV no dia.")
-    st.write("Tabela: 🟢 Conf (Ajuda o movimento), 🟡 Div (Cautela), 🔴 Quebra (Possível reversão).")
+    st.write("O gráfico mostra a pontuação real do IBOV para análise estrutural.")
+    st.write("Tabela: 🟢 Conf (Ajuda), 🟡 Div (Cautela), 🔴 Quebra (Possível reversão).")
     
