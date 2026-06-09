@@ -6,21 +6,21 @@ import numpy as np
 # =========================
 # CONFIG
 # =========================
-st.set_page_config(page_title="MACA-QUANTI v10.1", layout="wide")
+st.set_page_config(page_title="MACA-QUANTI v10.2", layout="wide")
 
-st.title("🏛️ MACA-QUANTI v10.1 | FLUXO INSTITUCIONAL")
+st.title("🏛️ MACA-QUANTI v10.2 | FLUXO INSTITUCIONAL")
 
 # =========================
-# ATIVOS
+# ATIVOS (SEM SIGLAS)
 # =========================
 assets = {
-    "FIXA11.SA": {"name": "JRS", "corr": -1},
-    "BRL=X":     {"name": "USD", "corr": -1},
-    "FIND11.SA": {"name": "FIN", "corr": 1},
-    "EWZ":       {"name": "EWZ", "corr": 1},
-    "ES=F":      {"name": "SPX", "corr": 1},
-    "^VIX":      {"name": "VIX", "corr": -1},
-    "NQ=F":      {"name": "NDX", "corr": 1},
+    "FIXA11.SA": {"name": "JUROS", "corr": -1},
+    "BRL=X":     {"name": "DÓLAR", "corr": -1},
+    "FIND11.SA": {"name": "SETOR FINANCEIRO", "corr": 1},
+    "EWZ":       {"name": "BOLSA BRASIL", "corr": 1},
+    "ES=F":      {"name": "S&P 500", "corr": 1},
+    "^VIX":      {"name": "VOLATILIDADE", "corr": -1},
+    "NQ=F":      {"name": "NASDAQ", "corr": 1},
 }
 
 # =========================
@@ -43,7 +43,6 @@ def build():
         std = c.rolling(20).std().iloc[-1]
 
         z = (c.iloc[-1] - ma) / max(std, 1e-9)
-
         impact = np.tanh(z) * v["corr"]
 
         rows.append({
@@ -58,15 +57,13 @@ if df.empty:
     st.stop()
 
 # =========================
-# METRICS
+# MÉTRICAS
 # =========================
 total = df["Impacto"].abs().sum() + 1e-9
-
 df["Peso"] = df["Impacto"].abs() / total
+
 flow = (df["Impacto"] * df["Peso"]).sum()
-
 driver = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
-
 hhi = np.sum(df["Peso"] ** 2)
 
 # =========================
@@ -74,14 +71,14 @@ hhi = np.sum(df["Peso"] ** 2)
 # =========================
 c1, c2, c3 = st.columns(3)
 
-c1.metric("DRIVER DO MERCADO", driver)
-c2.metric("FORÇA DO FLUXO", f"{flow:.3f}")
+c1.metric("DRIVER", driver)
+c2.metric("FLUXO", f"{flow:.3f}")
 c3.metric("CONCENTRAÇÃO", f"{hhi:.2f}")
 
 st.divider()
 
 # =========================
-# BÚSSOLA SIMPLES (PORTUGUÊS REAL)
+# DIREÇÃO
 # =========================
 st.subheader("DIREÇÃO DO MERCADO")
 
@@ -90,44 +87,44 @@ if flow > 0.15:
 elif flow < -0.15:
     st.error("MERCADO COM PRESSÃO DE BAIXA")
 else:
-    st.warning("MERCADO SEM DIREÇÃO CLARA")
+    st.warning("MERCADO SEM DIREÇÃO DEFINIDA")
 
 st.divider()
 
 # =========================
-# BARRA VISUAL (FOCO REAL)
+# TABELA LIMPA
 # =========================
-st.subheader("FORÇA DOS ATIVOS (EMPURRÃO NO WIN)")
+st.subheader("FORÇA DOS ATIVOS")
 
-def barra(valor):
-    intensidade = min(abs(valor), 1)
-    tamanho = int(intensidade * 20)
+view = df.sort_values("Impacto", ascending=True).copy()
+
+def barra_vertical(valor):
+    intensidade = int(min(abs(valor) * 20, 20))
 
     if valor > 0:
-        return "🟩" * tamanho
+        return "🟩\n" * intensidade
     else:
-        return "🟥" * tamanho
+        return "🟥\n" * intensidade
 
-view = df.sort_values("Impacto", ascending=False).copy()
-
-view["FORÇA VISUAL"] = view["Impacto"].apply(barra)
+view["FORÇA"] = view["Impacto"].apply(barra_vertical)
 view["Impacto"] = view["Impacto"].round(3)
 
 st.dataframe(
-    view[["Ativo", "FORÇA VISUAL", "Impacto"]],
+    view[["Ativo", "FORÇA", "Impacto"]],
     use_container_width=True,
     hide_index=True
 )
 
 # =========================
-# GRÁFICO DE IMPACTO (LEITURA RÁPIDA)
+# MAPA VERTICAL (NOVO)
 # =========================
-st.subheader("MAPA DE IMPACTO")
+st.subheader("MAPA DE IMPACTO (VISUAL VERTICAL)")
 
-chart = df.set_index("Ativo")["Impacto"]
-st.bar_chart(chart)
+chart_df = df.set_index("Ativo")["Impacto"]
+
+st.bar_chart(chart_df)
 
 # =========================
 # FOOTER
 # =========================
-st.caption(f"v10.1 | Flow={flow:.3f} | HHI={hhi:.2f}")
+st.caption(f"v10.2 | Flow={flow:.3f} | HHI={hhi:.2f}")
