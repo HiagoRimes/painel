@@ -7,13 +7,6 @@ import numpy as np
 st.set_page_config(page_title="MACA-QUANTI ELITE v9.0", layout="wide")
 st.title("🏛️ MACA-QUANTI ELITE v9.0 | Motor de Regimes")
 
-# Separando blocos para leitura hierárquica
-blocos_macro = {
-    "GLOBAL": ["ES=F", "NQ=F", "^VIX"],
-    "BRASIL": ["EWZ", "FIND11.SA"],
-    "MACRO":  ["FIXA11.SA", "BRL=X"]
-}
-
 vies_ativos = {
     "FIXA11.SA": {"nome": "JUROS", "corr": -1.0, "peso": 1.2},
     "BRL=X":     {"nome": "DÓLAR", "corr": -1.0, "peso": 1.2},
@@ -35,7 +28,7 @@ def get_motor_profissional():
             if isinstance(c, pd.DataFrame): c = c.iloc[:, -1]
             z = (c.iloc[-1] - c.rolling(20).mean().iloc[-1]) / max(c.rolling(20).std().iloc[-1], 0.0001)
             score = np.tanh(z * 0.5) * 100
-            res.append({"Ativo": cfg['nome'], "Impacto": score * cfg['corr'] * cfg['peso'], "Ticker": cod})
+            res.append({"Ativo": cfg['nome'], "Impacto": score * cfg['corr'] * cfg['peso']})
         except Exception: continue
     return pd.DataFrame(res)
 
@@ -47,10 +40,9 @@ df["Abs_Impacto"] = df["Impacto"].abs()
 hhi_sum = np.sum((df["Abs_Impacto"] / df["Abs_Impacto"].sum())**2)
 forca_total = df['Impacto'].sum() / (df["Abs_Impacto"].sum() + 1e-9)
 
-# Detecção de Conflito (Divergência Macro)
-# Se S&P500 e VIX (ativos globais) movem na mesma direção, temos conflito
-vix_score = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0]
-spx_score = df.loc[df["Ativo"] == "S&P500", "Impacto"].values[0]
+# Detecção de Conflito
+vix_score = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0] if "VIX" in df["Ativo"].values else 0
+spx_score = df.loc[df["Ativo"] == "S&P500", "Impacto"].values[0] if "S&P500" in df["Ativo"].values else 0
 tem_conflito = (spx_score > 0 and vix_score > 0)
 
 # Motor de Regime
@@ -68,7 +60,15 @@ col3.metric("Concentração (HHI)", f"{hhi_sum:.2f}")
 
 st.divider()
 
-# Exibição por blocos
 col_left, col_right = st.columns([1, 2])
 with col_left:
-    st.subheader("Bússola WIN
+    st.subheader("Bússola WIN") # ASPAS FECHADAS CORRETAMENTE
+    if forca_total > 0.2: st.success(f"### 🟢 COMPRA ({forca_total:.2f})")
+    elif forca_total < -0.2: st.error(f"### 🔴 VENDA ({abs(forca_total):.2f})")
+    else: st.warning(f"### ⚠️ NEUTRO")
+    
+with col_right:
+    st.subheader("Mapa de Calor Institucional")
+    st.dataframe(df[['Ativo', 'Impacto']].sort_values('Impacto', ascending=False), use_container_width=True)
+
+st.caption("v9.0: Identificando a estrutura de dominância e o regime macro vigente.")
