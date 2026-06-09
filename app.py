@@ -4,20 +4,18 @@ import pandas as pd
 
 st.set_page_config(page_title="MACA-QUANTI", layout="wide")
 
+# CSS para tornar os blocos padrão do Streamlit mais compactos e bonitos
 st.markdown("""
     <style>
-        .grid-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 10px;
-            padding: 10px;
-        }
-        .card {
+        [data-testid="stVerticalBlock"] { gap: 0.5rem; }
+        .stButton button { width: 100%; }
+        .metric-card {
             background-color: #262730;
+            padding: 15px;
             border-radius: 8px;
-            padding: 10px;
             text-align: center;
             border-left: 5px solid #444;
+            margin-bottom: 10px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -30,8 +28,8 @@ macro_ativos = {
     "EWZ": "EWZ", "^VIX": "VIX", "ES=F": "S&P 500", "NQ=F": "NASDAQ"
 }
 
-html_cards = '<div class="grid-container">'
-
+# Criamos uma lista de ativos processados
+lista_ativos = []
 with st.spinner("Calculando..."):
     for cod, nome in macro_ativos.items():
         try:
@@ -39,15 +37,18 @@ with st.spinner("Calculando..."):
             if not df.empty:
                 fechamento = df['Close'].iloc[:, 0] if isinstance(df['Close'], pd.DataFrame) else df['Close']
                 z = (fechamento.iloc[-1] - fechamento.rolling(20).mean().iloc[-1]) / fechamento.rolling(20).std().iloc[-1]
-                cor = "#FF4B4B" if z > 1.5 else ("#00CC96" if z < -1.5 else "#888888")
-                html_cards += f'''
-                    <div class="card" style="border-left-color: {cor};">
-                        <div style="font-weight:bold; font-size:13px;">{nome}</div>
-                        <div style="font-size:12px; color:#aaa;">Z: {z:.2f}</div>
-                    </div>
-                '''
+                lista_ativos.append({"nome": nome, "z": z})
         except: continue
 
-html_cards += '</div>'
-st.markdown(html_cards, unsafe_allow_html=True)
-st.caption("🟢 Z < -1.5 (Compra) | 🔴 Z > 1.5 (Venda)")
+# Criamos as colunas e inserimos os blocos nativos do Streamlit
+# Isso resolve o problema do texto HTML aparecendo na tela
+cols = st.columns(2)
+for i, item in enumerate(lista_ativos):
+    cor = "🔴" if item['z'] > 1.5 else ("🟢" if item['z'] < -1.5 else "⚪")
+    with cols[i % 2]:
+        st.markdown(f"""
+            <div class="metric-card" style="border-left-color: {'#FF4B4B' if item['z'] > 1.5 else ('#00CC96' if item['z'] < -1.5 else '#888')};">
+                <div style="font-weight:bold;">{item['nome']}</div>
+                <div style="font-size:18px;">{cor} Z: {item['z']:.2f}</div>
+            </div>
+        """, unsafe_allow_html=True)
