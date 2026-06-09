@@ -1,18 +1,24 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
 
-# Configuração da página
-st.set_page_config(page_title="MACA-QUANTI - Mobile Pro", layout="wide")
+st.set_page_config(page_title="MACA-QUANTI", layout="wide")
 
-# CSS para garantir que nada seja cortado
 st.markdown("""
     <style>
-        .block-container { padding: 1rem !important; }
-        .card { background-color: #262730; border-radius: 10px; padding: 15px; margin: 5px; text-align: center; border-left: 5px solid #444; }
-        .card-title { font-weight: bold; font-size: 16px; margin-bottom: 5px; }
-        .card-val { font-size: 14px; color: #ddd; }
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 10px;
+            padding: 10px;
+        }
+        .card {
+            background-color: #262730;
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            border-left: 5px solid #444;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -24,7 +30,7 @@ macro_ativos = {
     "EWZ": "EWZ", "^VIX": "VIX", "ES=F": "S&P 500", "NQ=F": "NASDAQ"
 }
 
-dados = []
+html_cards = '<div class="grid-container">'
 
 with st.spinner("Calculando..."):
     for cod, nome in macro_ativos.items():
@@ -33,21 +39,15 @@ with st.spinner("Calculando..."):
             if not df.empty:
                 fechamento = df['Close'].iloc[:, 0] if isinstance(df['Close'], pd.DataFrame) else df['Close']
                 z = (fechamento.iloc[-1] - fechamento.rolling(20).mean().iloc[-1]) / fechamento.rolling(20).std().iloc[-1]
-                
-                # Cor do card baseada no Z-Score
                 cor = "#FF4B4B" if z > 1.5 else ("#00CC96" if z < -1.5 else "#888888")
-                dados.append({"nome": nome, "z": z, "cor": cor, "preco": fechamento.iloc[-1]})
+                html_cards += f'''
+                    <div class="card" style="border-left-color: {cor};">
+                        <div style="font-weight:bold; font-size:13px;">{nome}</div>
+                        <div style="font-size:12px; color:#aaa;">Z: {z:.2f}</div>
+                    </div>
+                '''
         except: continue
 
-# Exibição em grade (Grid) responsiva
-cols = st.columns(2) # 2 colunas para ficar perfeito no mobile
-for i, item in enumerate(dados):
-    with cols[i % 2]:
-        st.markdown(f"""
-            <div class="card" style="border-left-color: {item['cor']};">
-                <div class="card-title">{item['nome']}</div>
-                <div class="card-val">Z: {item['z']:.2f}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-st.info("🟢 Z < -1.5 (Compra) | 🔴 Z > 1.5 (Venda)")
+html_cards += '</div>'
+st.markdown(html_cards, unsafe_allow_html=True)
+st.caption("🟢 Z < -1.5 (Compra) | 🔴 Z > 1.5 (Venda)")
