@@ -1,64 +1,74 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import time
+import numpy as np
 
-st.set_page_config(page_title="MACA-QUANTI PRO", layout="centered")
-st.title("🍎 MACA-QUANTI PRO")
+st.set_page_config(page_title="MACA-QUANTI ELITE", layout="centered")
+st.title("🍎 MACA-QUANTI ELITE")
 
-# Dicionário de ativos: Nome, Correlação com WIN, Peso
+# 1. Configuração com Pesos Estruturais (Item 1 e 6)
 vies_ativos = {
-    "^BVSP":   {"nome": "IBOV",      "mult":  1.0, "peso": 0.15},
-    "BRL=X":   {"nome": "DÓLAR",     "mult": -1.0, "peso": 0.30},
-    "FIXA11.SA":{"nome": "DI FUTURO", "mult": -1.0, "peso": 0.35},
-    "EWZ":     {"nome": "EWZ",       "mult":  1.0, "peso": 0.05},
-    "ES=F":    {"nome": "S&P500",    "mult":  1.0, "peso": 0.10},
-    "NQ=F":    {"nome": "NASDAQ",    "mult":  1.0, "peso": 0.05},
+    "FIXA11.SA": {"nome": "DI FUTURO", "corr": -1.0, "peso": 1.00},
+    "BRL=X":     {"nome": "DÓLAR",     "corr": -1.0, "peso": 0.90},
+    "FIND11.SA": {"nome": "IFNC",      "corr":  1.0, "peso": 0.80},
+    "EWZ":       {"nome": "EWZ",       "corr":  1.0, "peso": 0.70},
+    "ES=F":      {"nome": "S&P500",    "corr":  1.0, "peso": 0.60},
+    "^VIX":      {"nome": "VIX",       "corr": -1.0, "peso": 0.50},
+    "NQ=F":      {"nome": "NASDAQ",    "corr":  1.0, "peso": 0.40},
 }
 
 def get_stats(cod):
     df = yf.download(cod, period="30d", interval="1d", progress=False)
     c = df['Close'].iloc[:, 0] if isinstance(df['Close'], pd.DataFrame) else df['Close']
     c = pd.to_numeric(c, errors='coerce').dropna()
+    # Z-Score
     z = (float(c.iloc[-1]) - float(c.rolling(20).mean().iloc[-1])) / float(c.rolling(20).std().iloc[-1])
-    return float(c.iloc[-1]), z
+    # Convicção (proxy: Volatilidade recente)
+    conviccao = float(c.pct_change().std() * 1000) 
+    return float(c.iloc[-1]), z, conviccao
 
 # Processamento
 dados = []
-for cod, config in vies_ativos.items():
-    preco, z = get_stats(cod)
-    forca_bruta = z * config['mult']
-    forca_ponderada = forca_bruta * config['peso']
-    # Lógica de correlação simples: Se Z do ativo e Z do IBOV estão em direções compatíveis com a correlação
-    status = "🟢 Confirmando" if (z * config['mult']) > 0 else "🟡 Divergente"
+for cod, cfg in vies_ativos.items():
+    preco, z, conv = get_stats(cod)
+    
+    # Domínio: Força Estatística x Peso x Correlação Absoluta
+    forca_direcional = z * cfg['corr']
+    dominancia = abs(z) * cfg['peso'] * abs(cfg['corr'])
+    
     dados.append({
-        "Ativo": config['nome'],
+        "Ativo": cfg['nome'],
         "Preço": preco,
-        "Forca": forca_bruta,
-        "Contrib": abs(forca_ponderada),
-        "Status": status
+        "Direcao": forca_direcional * 100, # Score Direcional (-100 a +100)
+        "Conviccao": min(conv * 20, 100),  # Score 0-100
+        "Dominancia": dominancia,
+        "Corr_Status": "🟢 Confirmando" if forca_direcional > 0 else "🔴 Quebra"
     })
 
 df = pd.DataFrame(dados)
-total_abs = df['Contrib'].sum()
-df['Dominancia'] = (df['Contrib'] / total_abs) * 100
 
-# Painel Superior
-st.subheader("🎯 Viés para o WIN")
-vies_total = (df['Forca'] * [v['peso'] for v in vies_ativos.values()]).sum()
-if vies_total > 0.1: st.success(f"VIÉS ALTISTA (Força: {vies_total:.2f})")
-elif vies_total < -0.1: st.error(f"VIÉS BAIXISTA (Força: {vies_total:.2f})")
-else: st.info("MERCADO NEUTRO")
+# 2. Módulo de Dominância (Item 1 e 2)
+total_dom = df['Dominancia'].sum()
+df['Pct_Dominancia'] = (df['Dominancia'] / total_dom) * 100
 
-# Tabela Integrada de Dominância e Correlação
-st.write("### 🏆 Ranking de Dominância & Correlação")
-st.table(df[['Ativo', 'Dominancia', 'Status']].assign(Dominancia=df['Dominancia'].map('{:.1f}%'.format)))
+st.subheader("🎯 Driver Dominante")
+lider = df.loc[df['Dominancia'].idxmax()]
+st.write(f"### **{lider['Ativo']}**")
+st.write(f"**Dominância:** {lider['Pct_Dominancia']:.1f}% | **Confiança:** {'Alta' if lider['Pct_Dominancia'] > 30 else 'Moderada'}")
 
-# Carteira
-st.write("### 💼 Minha Carteira")
-carteira = {"B3SA3.SA": "B3SA3", "FIND11.SA": "IFNC", "MATB11.SA": "IMAT"}
-df_cart = []
-for cod, nome in carteira.items():
-    p, z = get_stats(cod)
-    df_cart.append({"Ativo": nome, "Preço": p, "Z-Score": round(z, 2)})
-st.table(pd.DataFrame(df_cart))
+# 3. Painel de Alinhamento (Item 5)
+alinhamento = df['Direcao'].mean()
+st.write("---")
+st.write(f"**ALINHAMENTO GERAL:** {alinhamento:.1f}%")
+st.progress(min(max((alinhamento + 100) / 200, 0), 1))
+
+# 4. Tabela de Scores
+st.write("### 📊 Ranking Estrutural")
+st.table(df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Direcao', 'Corr_Status']]
+         .rename(columns={'Pct_Dominancia': 'Dominância', 'Direcao': 'Score WIN'}))
+
+# Regime de mercado simples (Item 3)
+st.write("### 🏷️ Regime de Mercado")
+if abs(alinhamento) > 50: st.success("🟢 Tendência Forte")
+elif abs(alinhamento) > 20: st.warning("🟡 Tendência Moderada")
+else: st.info("⚪ Lateral / Compressão")
