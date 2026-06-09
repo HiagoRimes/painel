@@ -45,15 +45,15 @@ col1, col2 = st.columns(2)
 col1.metric("Primário", df.iloc[0]['Ativo'])
 col2.metric("Secundário", df.iloc[1]['Ativo'])
 
-# 4. Alinhamento e Leitura do Momento (Mensagens alteradas)
+# 4. Alinhamento e Leitura do Momento
 alinh = df['Score'].mean()
 
 if alinh > 0:
-    msg_sentido = "Tendência de Alta"
+    msg_sentido = "🟢 Tendência de Alta"
 elif alinh < 0:
-    msg_sentido = "Tendência de Baixa"
+    msg_sentido = "🔴 Tendência de Baixa"
 else:
-    msg_sentido = "Lateralização"
+    msg_sentido = "🟡 Lateralização"
 
 st.write(f"### **ALINHAMENTO GERAL: {abs(alinh):.1f}%**")
 st.write(f"Sentido: {msg_sentido}")
