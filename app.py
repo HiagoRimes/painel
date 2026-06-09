@@ -45,7 +45,7 @@ col1, col2 = st.columns(2)
 col1.metric("Primário", df.iloc[0]['Ativo'])
 col2.metric("Secundário", df.iloc[1]['Ativo'])
 
-# 4. Alinhamento e Leitura do Momento
+# 4. Alinhamento e Leitura do Momento (Mensagens e Emojis)
 alinh = df['Score'].mean()
 
 if alinh > 0:
@@ -63,9 +63,16 @@ st.write("### 📝 Leitura do Momento")
 resumo = f"O mercado é conduzido pelo {df.iloc[0]['Ativo']}. A fragmentação é {'Alta' if abs(alinh) < 40 else 'Baixa'}. Sentido: {msg_sentido}."
 st.success(resumo)
 
-# 5. Tabela de Scores
+# 5. Tabela de Scores (Limpa e formatada)
 df['Status'] = df.apply(lambda x: "🟢 Conf" if x['Score'] * x['Corr'] > 0 else ("🔴 Quebra" if x['Score'] * x['Corr'] < -50 else "🟡 Div"), axis=1)
-st.dataframe(df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score', 'Status']].rename(columns={'Pct_Dominancia': 'Dom %'}), hide_index=True, use_container_width=True)
+
+tabela_exibicao = df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score', 'Status']].copy()
+tabela_exibicao['Pct_Dominancia'] = tabela_exibicao['Pct_Dominancia'].map('{:.1f}%'.format)
+tabela_exibicao['Conviccao'] = tabela_exibicao['Conviccao'].map('{:.0f}'.format)
+tabela_exibicao['Score'] = tabela_exibicao['Score'].map('{:.0f}'.format)
+tabela_exibicao = tabela_exibicao.rename(columns={'Pct_Dominancia': 'Dom %'})
+
+st.dataframe(tabela_exibicao, hide_index=True, use_container_width=True)
 
 # 6. Guia de Leitura e Legendas
 st.write("---")
