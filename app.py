@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="MACA-QUANTI ELITE", layout="centered")
+st.set_page_config(page_title="MACA-QUANTI ELITE V4", layout="centered")
 st.title("🍎 MACA-QUANTI ELITE")
 
 # Configuração com Pesos Estruturais
@@ -22,7 +22,6 @@ def get_stats(cod):
     c = df['Close'].iloc[:, 0] if isinstance(df['Close'], pd.DataFrame) else df['Close']
     c = pd.to_numeric(c, errors='coerce').dropna()
     z = (float(c.iloc[-1]) - float(c.rolling(20).mean().iloc[-1])) / float(c.rolling(20).std().iloc[-1])
-    # Volatilidade para convicção
     vol = float(c.pct_change().std())
     return z, vol
 
@@ -31,12 +30,10 @@ dados = []
 for cod, cfg in vies_ativos.items():
     z, vol = get_stats(cod)
     
-    # 1. Normalização Logística (Sigmoid) para Scores (Objetivo: 30-70)
-    # k=1.5 centraliza melhor o range
-    conviccao = (1 / (1 + np.exp(-1.5 * (vol * 50 - 2)))) * 100
+    # Convicção Composta (Item 1)
+    conviccao = np.clip(vol * 1500, 10, 95)
     score_win = np.clip(z * cfg['corr'] * 33, -100, 100)
-    
-    dominancia = abs(z) * cfg['peso'] * abs(cfg['corr'])
+    dominancia = abs(z) * cfg['peso'] * (conviccao / 100)
     
     dados.append({
         "Ativo": cfg['nome'],
@@ -46,31 +43,37 @@ for cod, cfg in vies_ativos.items():
         "Corr": cfg['corr']
     })
 
-df = pd.DataFrame(dados)
+df = pd.DataFrame(dados).sort_values("Dominancia", ascending=False)
 df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
 
-# 2. Resumo Executivo e Driver
-lider = df.loc[df['Dominancia'].idxmax()]
-alinhamento = df['Score'].mean()
-
-st.subheader("🎯 Driver Dominante")
+# Exibição
+st.subheader("🎯 Hierarquia de Drivers")
 col1, col2 = st.columns(2)
-col1.metric("Líder", lider['Ativo'])
-col2.metric("Impacto WIN", f"{lider['Score']:.1f}")
+col1.metric("Primário", df.iloc[0]['Ativo'])
+col2.metric("Secundário", df.iloc[1]['Ativo'])
 
 st.write("---")
-# 3. Classificação e Alinhamento
-status_alinh = "Altista" if alinhamento > 0 else "Baixista"
-st.write(f"### **ALINHAMENTO GERAL: {abs(alinhamento):.1f}% ({status_alinh})**")
-st.progress(min(abs(alinhamento) / 100, 1))
+# Alinhamento
+alinh = df['Score'].mean()
+st.write(f"### **ALINHAMENTO GERAL: {abs(alinh):.1f}%**")
+st.write(f"Sentido: {'🟢 Altista' if alinh > 0 else '🔴 Baixista'}")
+st.progress(min(abs(alinh) / 100, 1))
 
-# Resumo Automático
+# Legenda de Status (Item 4)
+st.write("### 📖 Legenda Técnica")
+st.info("""
+- **🟢 Confirmando:** O ativo se move a favor da sua correlação com o WIN. (Ex: Dólar cai, WIN sobe).
+- **🟡 Divergente:** O ativo hesita ou não segue a correlação clássica.
+- **🔴 Quebra Estrutural:** O ativo está empurrando o WIN contra a sua natureza. (Ex: Dólar sobe e WIN sobe).
+""")
+
+# Resumo Automático (Item 5)
 st.write("### 📝 Leitura do Momento")
-resumo = f"✓ {lider['Ativo']} lidera o mercado com dominância de {lider['Pct_Dominancia']:.1f}%.\n"
-resumo += f"✓ Alinhamento de {abs(alinhamento):.0f}% indica um viés {status_alinh} "
-resumo += "Forte" if abs(alinhamento) > 75 else ("Moderado" if abs(alinhamento) > 50 else "Fraco")
-st.info(resumo)
+resumo = f"O mercado é conduzido principalmente pelo {df.iloc[0]['Ativo']}. "
+resumo += f"A fragmentação é {'Alta' if alinh < 40 else 'Baixa'}. "
+resumo += f"Viés predominante: {'Altista' if alinh > 0 else 'Baixista'}."
+st.success(resumo)
 
-# 4. Tabela Final
-df['Status'] = df.apply(lambda x: "🟢 Confirmando" if x['Score'] * x['Corr'] > 0 else "🟡 Divergente", axis=1)
+# Tabela
+df['Status'] = df.apply(lambda x: "🟢 Conf" if x['Score'] * x['Corr'] > 0 else ("🔴 Quebra" if x['Score'] * x['Corr'] < -50 else "🟡 Div"), axis=1)
 st.table(df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score', 'Status']].rename(columns={'Pct_Dominancia': 'Dom %'}))
