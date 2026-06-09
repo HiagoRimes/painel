@@ -76,13 +76,11 @@ if df.empty:
     st.stop()
 
 # =========================
-# DOMINÂNCIA
+# DOMINÂNCIA (SEM Abs_Impacto)
 # =========================
-df["Abs_Impacto"] = df["Impacto"].abs()
+total_abs = df["Impacto"].abs().sum() + 1e-9
 
-total_abs = df["Abs_Impacto"].sum() + 1e-9
-hhi_sum = np.sum((df["Abs_Impacto"] / total_abs) ** 2)
-
+hhi_sum = np.sum((df["Impacto"].abs() / total_abs) ** 2)
 qualidade_regime = 1 - hhi_sum
 
 # =========================
@@ -154,17 +152,15 @@ with col_left:
         st.warning("⚠️ NEUTRO")
 
 with col_right:
-    st.subheader("Mapa de Fluxo")
+    st.subheader("Fluxo Institucional (Ultra Compacto)")
 
-    def formatar(data):
-        return data.style.map(
-            lambda x: "background-color:#ffcccc;color:#cc0000;font-weight:bold"
-            if x < 0 else "background-color:#ccffcc;color:#006600;font-weight:bold",
-            subset=["Impacto"]
-        )
+    df_view = df.copy()
+    df_view["Dir"] = np.where(df_view["Impacto"] > 0, "▲", "▼")
+    df_view["Impacto"] = df_view["Impacto"].round(2)
 
     st.dataframe(
-        formatar(df.sort_values("Impacto", ascending=False)),
+        df_view[["Ativo", "Dir", "Impacto"]]
+        .sort_values("Impacto", ascending=False),
         use_container_width=True,
         hide_index=True
     )
