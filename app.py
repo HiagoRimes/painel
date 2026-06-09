@@ -5,18 +5,31 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="MACA-QUANTI", layout="wide")
 
-# CSS Otimizado: Grid responsivo e bordas totais
+# CSS para o visual do painel
 st.markdown("""
     <style>
-        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
-        .card { background-color: #262730; padding: 12px; border-radius: 8px; text-align: center; 
-                border-left: 6px solid #444; height: 100%; }
-        .card-name { font-weight: bold; font-size: 14px; }
-        .card-val { font-size: 16px; margin-top: 5px; }
+        /* Título Responsivo */
+        .main-title { font-size: 32px; font-weight: bold; }
+        @media (max-width: 600px) {
+            .main-title { font-size: 20px !important; }
+        }
+
+        /* Grade e Cartões */
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 10px; }
+        .card { 
+            background-color: #2e2e2e; 
+            padding: 10px; 
+            border-radius: 8px; 
+            text-align: center; 
+            border-left: 6px solid #444; 
+            height: 100%;
+        }
+        .card-name { font-weight: bold; font-size: 13px; color: #fff; }
+        .card-val { font-size: 14px; color: #ddd; margin-top: 4px; }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🍎 MACA-QUANTI")
+st.markdown('<div class="main-title">🍎 MACA-QUANTI</div>', unsafe_allow_html=True)
 
 macro_ativos = {
     "^BVSP": "IBOVESPA", "BRL=X": "DÓLAR", "FIXA11.SA": "JUROS",
@@ -36,11 +49,15 @@ with st.spinner("Calculando..."):
                 z_serie = (fechamento - fechamento.rolling(20).mean()) / fechamento.rolling(20).std()
                 series_z[nome] = z_serie.tail(15)
                 z = z_serie.iloc[-1]
+                
+                # Definição das cores da borda
                 cor = "#FF4B4B" if z > 1.5 else ("#00CC96" if z < -1.5 else "#888")
-                cards_html += f'''<div class="card" style="border-left-color:{cor};">
-                                    <div class="card-name">{nome}</div>
-                                    <div class="card-val">Z: {z:.2f}</div>
-                                  </div>'''
+                cards_html += f'''
+                    <div class="card" style="border-left-color:{cor};">
+                        <div class="card-name">{nome}</div>
+                        <div class="card-val">Z: {z:.2f}</div>
+                    </div>
+                '''
         except: continue
 cards_html += '</div>'
 st.markdown(cards_html, unsafe_allow_html=True)
@@ -55,7 +72,7 @@ fig.update_layout(
     height=400, margin=dict(l=0, r=0, t=20, b=0), 
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
     font_color="#fff",
-    legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5) # Legenda abaixo
+    legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5)
 )
 st.plotly_chart(fig, use_container_width=True)
 
