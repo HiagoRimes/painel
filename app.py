@@ -2,159 +2,198 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 # =========================
 # CONFIGURAÇÃO
 # =========================
-st.set_page_config(page_title="MACA-QUANTI v14.0", layout="wide")
-
-st.markdown(
-    "<h2 style='text-align:center;'>MACA-QUANTI | MESA INSTITUCIONAL</h2>",
-    unsafe_allow_html=True
-)
+st.set_page_config(page_title="MACA-QUANTI ELITE v1", layout="wide")
+st.title("🏛️ MACA-QUANTI ELITE v1 | Radar de Dominância de Mercado")
 
 # =========================
-# UNIVERSO (PORTUGUÊS TOTAL)
+# UNIVERSO DE ATIVOS
 # =========================
 ativos = {
-    "FIXA11.SA": {"nome": "JUROS LONGOS", "grupo": "JUROS", "corr": -1},
-    "BRL=X":     {"nome": "DÓLAR AMERICANO", "grupo": "CÂMBIO", "corr": -1},
-    "FIND11.SA": {"nome": "SETOR FINANCEIRO", "grupo": "AÇÕES", "corr": 1},
-    "EWZ":       {"nome": "BOLSA BRASIL", "grupo": "AÇÕES", "corr": 1},
-    "ES=F":      {"nome": "BOLSA ESTADOS UNIDOS", "grupo": "AÇÕES", "corr": 1},
-    "NQ=F":      {"nome": "TECNOLOGIA ESTADOS UNIDOS", "grupo": "AÇÕES", "corr": 1},
-    "^VIX":      {"nome": "VOLATILIDADE DO MERCADO", "grupo": "RISCO", "corr": -1},
+    "JUROS LONGOS": {"ticker": "TLT", "corr": -1.0},
+    "DÓLAR": {"ticker": "DX-Y.NYB", "corr": -1.0},
+    "VOLATILIDADE (VIX)": {"ticker": "^VIX", "corr": -1.0},
+    "SETOR FINANCEIRO": {"ticker": "XLF", "corr": 1.0},
+    "MATERIAIS BÁSICOS": {"ticker": "XLB", "corr": 1.0},
+    "PETROBRAS": {"ticker": "PETR4.SA", "corr": 1.0},
+    "VALE": {"ticker": "VALE3.SA", "corr": 1.0},
+    "S&P 500": {"ticker": "^GSPC", "corr": 1.0},
+    "NASDAQ": {"ticker": "^IXIC", "corr": 1.0},
 }
 
+indice_ref = "^BVSP"
+
 # =========================
-# MOTOR
+# CACHE
 # =========================
 @st.cache_data(ttl=60)
-def motor():
-    linhas = []
+def baixar(ticker, period="5d", interval="1m"):
+    try:
+        df = yf.download(ticker, period=period, interval=interval, progress=False)
+        if df is None or df.empty:
+            return None
+        return df["Close"].dropna()
+    except:
+        return None
 
-    for codigo, info in ativos.items():
-        df = yf.download(codigo, period="60d", interval="1d", progress=False)
-        if df.empty:
-            continue
 
-        serie = df["Close"]
-        if isinstance(serie, pd.DataFrame):
-            serie = serie.iloc[:, 0]
+# =========================
+# SCORE DE MOVIMENTO ANORMAL
+# =========================
+def movimento_anormal(series):
+    if len(series) < 50:
+        return 0
 
-        media = serie.rolling(20).mean().iloc[-1]
-        desvio = serie.rolling(20).std().iloc[-1]
+    atual = series.iloc[-1]
+    media = series.rolling(50).mean().iloc[-1]
+    std = series.rolling(50).std().iloc[-1]
 
-        z = (serie.iloc[-1] - media) / max(desvio, 1e-9)
-        impacto = np.tanh(z) * info["corr"]
+    if std == 0 or np.isnan(std):
+        return 0
 
-        linhas.append({
-            "Ativo": info["nome"],
-            "Grupo": info["grupo"],
-            "Impacto": impacto
-        })
+    z = (atual - media) / std
+    return np.tanh(z)
 
-    return pd.DataFrame(linhas)
 
-df = motor()
+# =========================
+# PROCESSAMENTO PRINCIPAL
+# =========================
+resultados = []
+
+for nome, cfg in ativos.items():
+
+    serie = baixar(cfg["ticker"])
+    if serie is None:
+        continue
+
+    score = movimento_anormal(serie)
+
+    # direção simples
+    direcao = np.sign(serie.iloc[-1] - serie.iloc[-2]) if len(serie) > 2 else 0
+
+    impacto = score * cfg["corr"] * direcao * 100
+
+    resultados.append({
+        "Ativo": nome,
+        "Impacto": impacto,
+        "Direção": direcao
+    })
+
+df = pd.DataFrame(resultados)
+
 if df.empty:
+    st.error("Sem dados disponíveis")
     st.stop()
 
 # =========================
-# MÉTRICAS CENTRAIS
+# PRESSÃO AGREGADA
 # =========================
-df["Peso"] = df["Impacto"].abs() / (df["Impacto"].abs().sum() + 1e-9)
+df["Pressão"] = df["Impacto"]
 
-fluxo = (df["Impacto"] * df["Peso"]).sum()
-concentracao = np.sum(df["Peso"] ** 2)
+compra = df[df["Pressão"] > 0]["Pressão"].sum()
+venda = abs(df[df["Pressão"] < 0]["Pressão"].sum())
 
-lider = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
+total = compra + venda + 1e-9
 
-vol = df[df["Ativo"] == "VOLATILIDADE DO MERCADO"]["Impacto"].values
-vol = vol[0] if len(vol) else 0
+pct_compra = compra / total
+pct_venda = venda / total
 
-# =========================
-# REGIME DE MERCADO
-# =========================
-if vol > 0.6:
-    regime = "ESTRESSE DE MERCADO"
-elif fluxo > 0.2:
-    regime = "TENDÊNCIA DE ALTA"
-elif fluxo < -0.2:
-    regime = "TENDÊNCIA DE BAIXA"
-elif abs(fluxo) < 0.1:
-    regime = "MERCADO SEM DIREÇÃO"
-elif concentracao > 0.45:
-    regime = "MERCADO CONCENTRADO"
+if pct_compra > 0.55:
+    tendencia = "🟢 TENDÊNCIA DE COMPRA"
+elif pct_venda > 0.55:
+    tendencia = "🔴 TENDÊNCIA DE VENDA"
 else:
-    regime = "MERCADO DIRECIONAL MODERADO"
+    tendencia = "🟡 NEUTRO"
 
 # =========================
-# CABEÇALHO
+# ÍNDICE (WIN proxy)
 # =========================
-c1, c2, c3, c4 = st.columns(4)
+indice = baixar(indice_ref)
 
-c1.metric("REGIME", regime)
-c2.metric("LÍDER", lider)
-c3.metric("FLUXO", f"{fluxo:.3f}")
-c4.metric("CONCENTRAÇÃO", f"{concentracao:.2f}")
+if indice is not None:
+    win_score = np.sign(indice.iloc[-1] - indice.iloc[-2])
+else:
+    win_score = 0
+
+# =========================
+# LIDERANÇA
+# =========================
+df = df.sort_values("Impacto", ascending=False)
+lider = df.iloc[0]["Ativo"]
+
+# =========================
+# UI PRINCIPAL
+# =========================
+col1, col2, col3 = st.columns(3)
+
+col1.metric("Tendência do Mercado", tendencia)
+col2.metric("Líder do Momento", lider)
+col3.metric("Atualização", datetime.now().strftime("%H:%M:%S"))
 
 st.divider()
 
 # =========================
-# TABELA PRINCIPAL
+# PRESSÃO
 # =========================
-st.markdown("### FLUXO DO MERCADO")
+st.subheader("Pressão Agregada")
 
-tabela = df.sort_values("Impacto", ascending=False).copy()
+st.write(f"🟢 Compra: {pct_compra:.2%}")
+st.write(f"🔴 Venda: {pct_venda:.2%}")
 
-def formatar(x):
-    sinal = "POSITIVO" if x > 0 else "NEGATIVO"
-    return f"{sinal} | {x:.3f}"
+st.divider()
 
-tabela["FORÇA"] = tabela["Impacto"].apply(formatar)
+# =========================
+# RANKING
+# =========================
+st.subheader("Ranking de Liderança")
+
+def cor(v):
+    if v > 0:
+        return "🟢"
+    elif v < 0:
+        return "🔴"
+    return "🟡"
+
+df["Sinal"] = df["Impacto"].apply(cor)
 
 st.dataframe(
-    tabela[["Grupo", "Ativo", "FORÇA"]],
-    use_container_width=True,
-    hide_index=True
+    df[["Sinal", "Ativo", "Impacto"]].reset_index(drop=True),
+    use_container_width=True
 )
 
-st.divider()
-
 # =========================
-# LEITURA RÁPIDA
-# =========================
-st.markdown("### LEITURA OPERACIONAL")
-
-for _, r in tabela.iterrows():
-    if r["Impacto"] > 0:
-        st.write(f"POSITIVO → {r['Ativo']} ({r['Grupo']}) {r['Impacto']:.3f}")
-    else:
-        st.write(f"NEGATIVO → {r['Ativo']} ({r['Grupo']}) {r['Impacto']:.3f}")
-
-# =========================
-# LEGENDA
+# ALERTAS
 # =========================
 st.divider()
+st.subheader("Alertas")
 
-st.info("""
-LEGENDA DO SISTEMA
+alertas = df[abs(df["Impacto"]) > 70]
 
-FLUXO:
-- positivo = pressão de alta no mercado
-- negativo = pressão de baixa no mercado
-
-CONCENTRAÇÃO:
-- baixo valor = mercado distribuído
-- alto valor = mercado dependente de poucos ativos
-
-VOLATILIDADE:
-- alta = instabilidade e risco elevado
-- baixa = ambiente controlado
-""")
+if alertas.empty:
+    st.write("Sem movimentos extremos no momento.")
+else:
+    st.dataframe(alertas[["Ativo", "Impacto"]])
 
 # =========================
-# FINAL
+# REGIME SIMPLES
 # =========================
-st.caption(f"v14.0 | fluxo={fluxo:.3f} | concentração={concentracao:.2f}")
+st.divider()
+st.subheader("Regime de Mercado")
+
+if pct_compra > 0.6:
+    regime = "🟢 Direcional Altista"
+elif pct_venda > 0.6:
+    regime = "🔴 Direcional Baixista"
+else:
+    regime = "🟡 Neutro / Compressão"
+
+st.write(regime)
+
+# =========================
+# FOOTER
+# =========================
+st.caption("v1 | MACA-QUANTI | Radar de dominância e correlação intradiária")
