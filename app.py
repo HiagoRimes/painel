@@ -42,4 +42,51 @@ forca_total = df['Impacto'].sum() / (df["Abs_Impacto"].sum() + 1e-9)
 
 # Detecção de Conflito
 vix_score = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0] if "VIX" in df["Ativo"].values else 0
-spx_score = df.loc[df["Ativo"] == "S&P5
+spx_score = df.loc[df["Ativo"] == "S&P500", "Impacto"].values[0] if "S&P500" in df["Ativo"].values else 0
+tem_conflito = (spx_score > 0 and vix_score > 0)
+
+# Motor de Regime
+if tem_conflito: regime = "🚨 ALERTA: Conflito Macro"
+elif vix_score > 20: regime = "Risk-Off Global"
+elif hhi_sum > 0.4: regime = "Dominância Concentrada"
+elif forca_total > 0.3: regime = "Risk-On (Direcional)"
+else: regime = "Compressão / Neutro"
+
+# UI Hierárquica
+col1, col2, col3 = st.columns(3)
+col1.metric("Regime", regime)
+col2.metric("Driver Dominante", df.loc[df["Abs_Impacto"].idxmax(), "Ativo"])
+col3.metric("Concentração (HHI)", f"{hhi_sum:.2f}")
+
+st.divider()
+
+col_left, col_right = st.columns([1, 2])
+with col_left:
+    st.subheader("Bússola WIN")
+    if forca_total > 0.2: st.success(f"### 🟢 COMPRA ({forca_total:.2f})")
+    elif forca_total < -0.2: st.error(f"### 🔴 VENDA ({abs(forca_total):.2f})")
+    else: st.warning(f"### ⚠️ NEUTRO")
+    
+with col_right:
+    st.subheader("Mapa de Calor Institucional")
+    def formatar_tabela(data):
+        return data.style.map(
+            lambda x: 'background-color: #ffcccc; color: #cc0000; font-weight: bold' if x < 0 
+            else 'background-color: #ccffcc; color: #006600; font-weight: bold', 
+            subset=['Impacto']
+        )
+    
+    st.dataframe(
+        formatar_tabela(df[['Ativo', 'Impacto']].sort_values('Impacto', ascending=False)), 
+        use_container_width=True,
+        hide_index=True
+    )
+
+with st.expander("📖 Entender o Painel (Legenda)"):
+    st.markdown("""
+    * **Regime**: `Risk-Off` (Stress global), `Dominância Concentrada` (Mercado puxado por poucos ativos), `Risk-On` (Direcional alinhado).
+    * **HHI**: `> 0.4` (Mercado instável/dependente), `< 0.25` (Saudável/disperso).
+    * **Cores**: 🟢 Verde (Pressão de Alta) | 🔴 Vermelho (Pressão de Baixa).
+    """)
+
+st.caption(f"v9.1 | HHI Atual: {hhi_sum:.2f} | Status: Monitorando Fluxo Institucional")
