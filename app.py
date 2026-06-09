@@ -6,21 +6,30 @@ import numpy as np
 # =========================
 # CONFIG
 # =========================
-st.set_page_config(page_title="MACA-QUANTI v11.0", layout="wide")
+st.set_page_config(page_title="MACA-QUANTI v12.0", layout="wide")
 
-st.title("🏛️ MACA-QUANTI v11.0 | MESA INSTITUCIONAL")
+st.title("🏛️ MACA-QUANTI v12.0 | PAINEL DE REGIME GLOBAL")
 
 # =========================
-# UNIVERSO
+# UNIVERSO POR BLOCO
 # =========================
 assets = {
-    "FIXA11.SA": {"name": "JUROS", "corr": -1},
-    "BRL=X":     {"name": "DÓLAR", "corr": -1},
-    "FIND11.SA": {"name": "FINANCEIRO", "corr": 1},
-    "EWZ":       {"name": "BOLSA BRASIL", "corr": 1},
-    "ES=F":      {"name": "S&P 500", "corr": 1},
-    "^VIX":      {"name": "VOLATILIDADE", "corr": -1},
-    "NQ=F":      {"name": "NASDAQ", "corr": 1},
+    # RATES
+    "FIXA11.SA": {"name": "JUROS", "corr": -1, "group": "RATES"},
+
+    # FX
+    "BRL=X": {"name": "DÓLAR", "corr": -1, "group": "FX"},
+
+    # EQUITY BRASIL
+    "FIND11.SA": {"name": "FINANCEIRO", "corr": 1, "group": "EQUITY"},
+    "EWZ": {"name": "BOLSA BRASIL", "corr": 1, "group": "EQUITY"},
+
+    # GLOBAL EQUITY
+    "ES=F": {"name": "S&P 500", "corr": 1, "group": "EQUITY"},
+    "NQ=F": {"name": "NASDAQ", "corr": 1, "group": "EQUITY"},
+
+    # VOL
+    "^VIX": {"name": "VOLATILIDADE (VIX)", "corr": -1, "group": "VOL"},
 }
 
 # =========================
@@ -47,6 +56,7 @@ def engine():
 
         rows.append({
             "Ativo": v["name"],
+            "Grupo": v["group"],
             "Impacto": impact
         })
 
@@ -57,75 +67,86 @@ if df.empty:
     st.stop()
 
 # =========================
-# METRICS
+# METRICS GLOBAIS
 # =========================
-total_abs = df["Impacto"].abs().sum() + 1e-9
+df["Peso"] = df["Impacto"].abs() / (df["Impacto"].abs().sum() + 1e-9)
 
-df["Peso"] = df["Impacto"].abs() / total_abs
-
-flow = (df["Impacto"] * df["Peso"]).sum()
+flow_global = (df["Impacto"] * df["Peso"]).sum()
+hhi = np.sum(df["Peso"] ** 2)
 
 driver = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
-hhi = np.sum(df["Peso"] ** 2)
+
+# =========================
+# FUNÇÃO REGIME
+# =========================
+vix = df[df["Ativo"] == "VOLATILIDADE (VIX)"]["Impacto"].values
+vix = vix[0] if len(vix) else 0
+
+spx = df[df["Ativo"] == "S&P 500"]["Impacto"].values
+spx = spx[0] if len(spx) else 0
+
+if vix > 0.6:
+    regime = "🚨 STRESS / RISK OFF"
+elif vix < -0.3 and flow_global > 0.2:
+    regime = "🟢 RISK ON FORTE"
+elif hhi > 0.45:
+    regime = "⚠️ MERCADO CONCENTRADO"
+elif abs(flow_global) < 0.1:
+    regime = "⚪ COMPRESSÃO / NEUTRO"
+else:
+    regime = "🟡 DIRECIONAL MODERADO"
 
 # =========================
 # HEADER
 # =========================
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, c4 = st.columns(4)
 
-c1.metric("DRIVER", driver)
-c2.metric("FLUXO", f"{flow:.3f}")
-c3.metric("CONCENTRAÇÃO", f"{hhi:.2f}")
+c1.metric("REGIME", regime)
+c2.metric("DRIVER", driver)
+c3.metric("FLUXO GLOBAL", f"{flow_global:.3f}")
+c4.metric("HHI", f"{hhi:.2f}")
 
 st.divider()
 
 # =========================
-# DIREÇÃO
+# FUNÇÃO DE BLOCO
 # =========================
-st.subheader("DIREÇÃO DO MERCADO")
+def bloco(nome, grupo):
+    st.subheader(nome)
 
-if flow > 0.15:
-    st.success("MERCADO COM VIÉS POSITIVO")
-elif flow < -0.15:
-    st.error("MERCADO COM VIÉS NEGATIVO")
+    temp = df[df["Grupo"] == grupo].sort_values("Impacto", ascending=False)
+
+    for _, r in temp.iterrows():
+        cor = "🟢" if r["Impacto"] > 0 else "🔴"
+        st.write(f"{cor} {r['Ativo']}  |  {r['Impacto']:.3f}")
+
+# =========================
+# PAINEL POR REGIME
+# =========================
+col1, col2 = st.columns(2)
+
+with col1:
+    bloco("RATES (JUROS)", "RATES")
+    bloco("FX (CÂMBIO)", "FX")
+
+with col2:
+    bloco("EQUITY (RISCO)", "EQUITY")
+    bloco("VOL (STRESS)", "VOL")
+
+st.divider()
+
+# =========================
+# LEITURA FINAL
+# =========================
+st.subheader("LEITURA DE MERCADO")
+
+if flow_global > 0.2:
+    st.success("FLUXO POSITIVO DOMINANTE")
+elif flow_global < -0.2:
+    st.error("FLUXO NEGATIVO DOMINANTE")
 else:
-    st.warning("MERCADO SEM DIREÇÃO DEFINIDA")
+    st.warning("MERCADO SEM DIREÇÃO CLARA")
 
-st.divider()
-
-# =========================
-# FLUXO INSTITUCIONAL (SEM STYLE - FIX)
-# =========================
-st.subheader("FLUXO INSTITUCIONAL")
-
-view = df.sort_values("Impacto", ascending=False).copy()
-
-def formatar_linha(row):
-    if row["Impacto"] > 0:
-        return f"🟢 {row['Ativo']}   ▲ {row['Impacto']:.3f}"
-    else:
-        return f"🔴 {row['Ativo']}   ▼ {row['Impacto']:.3f}"
-
-view["FLUXO"] = view.apply(formatar_linha, axis=1)
-
-st.dataframe(
-    view[["FLUXO"]],
-    use_container_width=True,
-    hide_index=True
+st.caption(
+    f"v12.0 | regime system | flow={flow_global:.3f} | hhi={hhi:.2f} | driver={driver}"
 )
-
-# =========================
-# RANKING SIMPLES
-# =========================
-st.subheader("RANKING DE PRESSÃO")
-
-for _, row in view.iterrows():
-    if row["Impacto"] > 0:
-        st.write(f"🟢 {row['Ativo']} → {row['Impacto']:.3f}")
-    else:
-        st.write(f"🔴 {row['Ativo']} → {row['Impacto']:.3f}")
-
-# =========================
-# FOOTER
-# =========================
-st.caption(f"v11.0 | FLOW={flow:.3f} | HHI={hhi:.2f}")
