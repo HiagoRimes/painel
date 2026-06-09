@@ -4,8 +4,8 @@ import pandas as pd
 import numpy as np
 
 # Configuração de Layout
-st.set_page_config(page_title="MACA-QUANTI ELITE v9.2", layout="wide")
-st.title("🏛️ MACA-QUANTI ELITE v9.2 | Motor Institucional")
+st.set_page_config(page_title="MACA-QUANTI ELITE v9.4", layout="wide")
+st.title("🏛️ MACA-QUANTI ELITE v9.4 | Motor Institucional")
 
 vies_ativos = {
     "FIXA11.SA": {"nome": "JUROS", "corr": -1.0, "peso": 1.2},
@@ -23,35 +23,66 @@ def get_motor_profissional():
     for cod, cfg in vies_ativos.items():
         try:
             df_y = yf.download(cod, period="60d", interval="1d", progress=False)
-            if df_y is None or df_y.empty: continue
-            c = df_y['Close']
-            if isinstance(c, pd.DataFrame): c = c.iloc[:, -1]
-            z = (c.iloc[-1] - c.rolling(20).mean().iloc[-1]) / max(c.rolling(20).std().iloc[-1], 0.0001)
+            if df_y is None or df_y.empty:
+                continue
+
+            c = df_y["Close"]
+            if isinstance(c, pd.DataFrame):
+                c = c.iloc[:, -1]
+
+            z = (c.iloc[-1] - c.rolling(20).mean().iloc[-1]) / max(c.rolling(20).std().iloc[-1], 1e-9)
             score = np.tanh(z * 0.5) * 100
-            res.append({"Ativo": cfg['nome'], "Impacto": score * cfg['corr'] * cfg['peso']})
-        except Exception: continue
+
+            res.append({
+                "Ativo": cfg["nome"],
+                "Impacto": score * cfg["corr"] * cfg["peso"]
+            })
+
+        except Exception:
+            continue
+
     return pd.DataFrame(res)
 
 df = get_motor_profissional()
-if df.empty: st.stop()
+if df.empty:
+    st.stop()
 
-# 1. Cálculos de Dominância
+# =========================
+# 1. DOMINÂNCIA
+# =========================
 df["Abs_Impacto"] = df["Impacto"].abs()
-hhi_sum = np.sum((df["Abs_Impacto"] / (df["Abs_Impacto"].sum() + 1e-9))**2)
+
+total_abs = df["Abs_Impacto"].sum() + 1e-9
+hhi_sum = np.sum((df["Abs_Impacto"] / total_abs) ** 2)
+
 qualidade_regime = 1 - hhi_sum
 
-# 2. Força Total Estável (Escala Tanh)
-forca_total = np.tanh(df['Impacto'].sum() / (df["Abs_Impacto"].sum() + 1e-9))
+# =========================
+# 2. FORÇA TOTAL
+# =========================
+raw_forca = df["Impacto"].sum() / (total_abs + 1e-9)
+forca_total = np.tanh(raw_forca)
 
-# 3. Driver Dominante
-driver_lider = df.sort_values("Impacto", ascending=False).head(1)["Ativo"].values[0]
+intensidade_regime = abs(forca_total) * (1 - hhi_sum)
 
-# 4. Detecção de Conflito Macro (Corrigida)
+# =========================
+# 3. DRIVER
+# =========================
+driver_lider = df.sort_values("Impacto", ascending=False).iloc[0]["Ativo"]
+
+# =========================
+# 4. CONFLITO MACRO
+# =========================
 vix_score = df.loc[df["Ativo"] == "VIX", "Impacto"].values[0] if "VIX" in df["Ativo"].values else 0
 spx_score = df.loc[df["Ativo"] == "S&P500", "Impacto"].values[0] if "S&P500" in df["Ativo"].values else 0
-tem_conflito = (spx_score > 0 and vix_score > 10)
 
-# 5. Motor de Regime (Robustez v9.2)
+tem_conflito = (
+    vix_score > 10 and abs(spx_score) < 5
+)
+
+# =========================
+# 5. REGIME
+# =========================
 if tem_conflito:
     regime = "🚨 Conflito Macro"
 elif vix_score > 15 and spx_score < 0:
@@ -65,42 +96,62 @@ elif forca_total > 0.3:
 else:
     regime = "Neutro Estrutural"
 
-# UI Hierárquica
-col1, col2, col3, col4 = st.columns(4)
+# =========================
+# 6. CONSENSO
+# =========================
+consenso = 1 - hhi_sum if forca_total > 0 else hhi_sum
+
+# =========================
+# UI
+# =========================
+col1, col2, col3, col4, col5 = st.columns(5)
+
 col1.metric("Regime", regime)
 col2.metric("Driver", driver_lider)
 col3.metric("Concentração", f"{hhi_sum:.2f}")
-col4.metric("Qualidade Regime", f"{qualidade_regime:.2f}")
+col4.metric("Qualidade", f"{qualidade_regime:.2f}")
+col5.metric("Intensidade", f"{intensidade_regime:.2f}")
+col5.metric("Consenso", f"{consenso:.2f}")
 
 st.divider()
 
 col_left, col_right = st.columns([1, 2])
+
 with col_left:
     st.subheader("Bússola WIN")
-    if forca_total > 0.2: st.success(f"### 🟢 COMPRA ({forca_total:.2f})")
-    elif forca_total < -0.2: st.error(f"### 🔴 VENDA ({abs(forca_total):.2f})")
-    else: st.warning(f"### ⚠️ NEUTRO")
-    
+
+    if forca_total > 0.2:
+        st.success(f"### 🟢 COMPRA ({forca_total:.2f})")
+    elif forca_total < -0.2:
+        st.error(f"### 🔴 VENDA ({abs(forca_total):.2f})")
+    else:
+        st.warning("### ⚠️ NEUTRO")
+
 with col_right:
     st.subheader("Mapa de Calor Institucional")
+
     def formatar_tabela(data):
         return data.style.map(
-            lambda x: 'background-color: #ffcccc; color: #cc0000; font-weight: bold' if x < 0 
-            else 'background-color: #ccffcc; color: #006600; font-weight: bold', 
-            subset=['Impacto']
+            lambda x: "background-color: #ffcccc; color: #cc0000; font-weight: bold"
+            if x < 0 else "background-color: #ccffcc; color: #006600; font-weight: bold",
+            subset=["Impacto"]
         )
-    
+
     st.dataframe(
-        formatar_tabela(df[['Ativo', 'Impacto']].sort_values('Impacto', ascending=False)), 
+        formatar_tabela(df[["Ativo", "Impacto"]].sort_values("Impacto", ascending=False)),
         use_container_width=True,
         hide_index=True
     )
 
 with st.expander("📖 Legenda Institucional"):
     st.markdown("""
-    * **Regime**: `Risk-Off` (Stress global), `Dominância Concentrada` (Mercado puxado por poucos ativos), `Risk-On` (Direcional alinhado).
-    * **HHI**: `> 0.4` (Mercado instável/dependente), `< 0.25` (Saudável/disperso).
-    * **Qualidade Regime**: Próximo de 1 é dispersão saudável; próximo de 0 é concentração de risco.
+    * **Regime**: Risk-On, Risk-Off, Conflito Macro, Compressão, Dominância Concentrada.
+    * **HHI**: mede concentração de fluxo institucional.
+    * **Qualidade**: dispersão saudável do mercado.
+    * **Intensidade**: força direcional ajustada pela concentração.
+    * **Consenso**: alinhamento entre drivers.
     """)
 
-st.caption(f"v9.2 | Regime Quality: {qualidade_regime:.2f} | HHI: {hhi_sum:.2f}")
+st.caption(
+    f"v9.4 | Qualidade: {qualidade_regime:.2f} | Intensidade: {intensidade_regime:.2f} | Consenso: {consenso:.2f} | HHI: {hhi_sum:.2f}"
+)
