@@ -3,8 +3,8 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
-# Configuração de layout para responsividade
-st.set_page_config(page_title="MACA-QUANTI", layout="wide")
+# Configuração simples para mobile (sem o 'wide')
+st.set_page_config(page_title="MACA-QUANTI", layout="centered")
 
 st.title("🍎 MACA-QUANTI")
 
@@ -14,25 +14,41 @@ macro_ativos = {
     "EWZ": "EWZ", "^VIX": "VIX", "ES=F": "S&P 500", "NQ=F": "NASDAQ"
 }
 
-# Processamento dos dados
-ativos_processados = []
+ativos_dados = []
+series_z = {}
+
 with st.spinner("Calculando..."):
     for cod, nome in macro_ativos.items():
         try:
             df = yf.download(cod, period="60d", interval="1d", progress=False)
             if not df.empty:
                 fechamento = df['Close'].iloc[:, 0] if isinstance(df['Close'], pd.DataFrame) else df['Close']
-                z = (fechamento.iloc[-1] - fechamento.rolling(20).mean().iloc[-1]) / fechamento.rolling(20).std().iloc[-1]
-                ativos_processados.append({"nome": nome, "z": z})
+                z_serie = (fechamento - fechamento.rolling(20).mean()) / fechamento.rolling(20).std()
+                series_z[nome] = z_serie.tail(15)
+                z = z_serie.iloc[-1]
+                ativos_dados.append({"nome": nome, "z": z})
         except: continue
 
-# Grid Responsivo fixo em 2 colunas para estabilidade total
-cols = st.columns(2)
-for i, item in enumerate(ativos_processados):
-    with cols[i % 2]:
-        # Usamos o st.metric para garantir que o layout nunca "quebre" em texto
+# EXIBIÇÃO EM UMA COLUNA (Estável para Mobile)
+for item in ativos_dados:
+    # Usamos o st.metric dentro de um container para garantir o isolamento visual
+    with st.container():
         st.metric(label=item['nome'], value=f"Z: {item['z']:.2f}")
+        st.divider() # Linha divisória simples para organizar
 
-# Gráfico
+# GRÁFICO (Configurado para largura do celular)
 st.subheader("📊 Rastro (15 dias)")
-# ... (seu código de gráfico aqui)
+fig = go.Figure()
+for nome, serie in series_z.items():
+    fig.add_trace(go.Scatter(x=serie.index.strftime('%d/%m'), y=serie.values, mode='lines', name=nome))
+
+# Ajustes específicos para o gráfico não ficar gigante no celular
+fig.update_layout(
+    height=300, 
+    margin=dict(l=20, r=20, t=20, b=20),
+    font_color="#fff", 
+    paper_bgcolor="rgba(0,0,0,0)", 
+    plot_bgcolor="rgba(0,0,0,0)",
+    legend=dict(orientation="h", yanchor="top", y=-0.2)
+)
+st.plotly_chart(fig, use_container_width=True)
