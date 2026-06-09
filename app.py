@@ -19,12 +19,10 @@ vies_ativos = {
 }
 
 def get_stats(cod):
-    # Obtém dados dos últimos 60 dias
     df = yf.download(cod, period="60d", interval="1d", progress=False)
     if df.empty: return 0, 0, 0
     c = pd.to_numeric(df['Close'].iloc[:, 0], errors='coerce').dropna()
     
-    # Proteções contra Divisão por Zero
     ma20 = c.rolling(20).mean().iloc[-1]
     std20 = max(c.rolling(20).std().iloc[-1], 0.0001)
     z = (c.iloc[-1] - ma20) / std20
@@ -34,7 +32,6 @@ def get_stats(cod):
     vol_rel = vol_5d.iloc[-1] / vol_30d
     
     persistencia = abs(c.iloc[-1] - c.shift(5).iloc[-1]) / std20
-    # Cálculo de aceleração com proteção
     aceleracao = (c.pct_change(1).iloc[-1]) / (c.pct_change(10).rolling(10).mean().iloc[-1] + 0.0001)
     
     conviccao = np.clip(((vol_rel * 0.3) + (persistencia * 0.4) + (abs(aceleracao) * 0.3)) * 100, 10, 95)
@@ -68,7 +65,7 @@ df_macro = df.groupby("Grupo").apply(
 df_macro['Pct_Dominancia'] = (df_macro['Dominancia'] / df_macro['Dominancia'].sum()) * 100
 df_macro = df_macro.sort_values("Dominancia", ascending=False)
 
-st.metric("DOMINÂNCIA MACRO", df_macro.iloc[0]['Grupo'])
+st.metric("DOMINÂNCIA MACRO 🎯", df_macro.iloc[0]['Grupo'])
 st.dataframe(df_macro.style.format({"Pct_Dominancia": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True, use_container_width=True)
 
 # 3. Hierarquia e Fragmentação
@@ -76,7 +73,8 @@ st.write("---")
 st.subheader("🎯 Hierarquia de Drivers")
 top_3 = df.sort_values("Dominancia", ascending=False).head(3)
 frag = 100 - top_3.iloc[0]['Pct_Dominancia']
-st.write(f"**Fragmentação:** {frag:.1f}% | {'Alinhado' if frag < 40 else 'Confuso'}")
+status_frag = "⚠️ Confuso" if frag >= 40 else "✅ Alinhado"
+st.write(f"**Fragmentação:** {frag:.1f}% | {status_frag}")
 
 cols = st.columns(3)
 for i, col in enumerate(cols):
@@ -84,13 +82,13 @@ for i, col in enumerate(cols):
 
 # 4. Alinhamento Ponderado
 alinh = np.average(df['Score'], weights=df['Dominancia'])
-st.write(f"### **ALINHAMENTO PONDERADO: {abs(alinh):.1f}%**")
+st.write(f"### **📊 ALINHAMENTO PONDERADO: {abs(alinh):.1f}%**")
 st.progress(min(abs(alinh) / 100, 1))
 
 # 5. Quebras de Correlação
 quebras = df[df.apply(lambda x: x['Score'] * x['Corr'] < -50, axis=1)]
 if not quebras.empty:
-    st.error(f"⚠️ QUEBRAS: {', '.join(quebras['Ativo'].tolist())}")
+    st.error(f"⚠️ QUEBRAS DE CORRELAÇÃO: {', '.join(quebras['Ativo'].tolist())}")
 
 # 6. Tabela Detalhada
 st.dataframe(df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score']].rename(columns={'Pct_Dominancia': 'Dom %'}).style.format({"Dom %": "{:.1f}%", "Conviccao": "{:.0f}", "Score": "{:.0f}"}), hide_index=True, use_container_width=True)
