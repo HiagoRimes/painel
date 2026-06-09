@@ -4,32 +4,26 @@ import pandas as pd
 import numpy as np
 
 # =========================
-# CONFIG
+# CONFIG BLOOMBERG STYLE
 # =========================
-st.set_page_config(page_title="MACA-QUANTI v12.0", layout="wide")
+st.set_page_config(page_title="MACA-QUANTI v13.0", layout="wide")
 
-st.title("🏛️ MACA-QUANTI v12.0 | PAINEL DE REGIME GLOBAL")
+st.markdown(
+    "<h2 style='text-align:center;'>MACA-QUANTI | MARKET DESK</h2>",
+    unsafe_allow_html=True
+)
 
 # =========================
-# UNIVERSO POR BLOCO
+# UNIVERSE (CLEAN LABELS)
 # =========================
 assets = {
-    # RATES
-    "FIXA11.SA": {"name": "JUROS", "corr": -1, "group": "RATES"},
-
-    # FX
-    "BRL=X": {"name": "DÓLAR", "corr": -1, "group": "FX"},
-
-    # EQUITY BRASIL
-    "FIND11.SA": {"name": "FINANCEIRO", "corr": 1, "group": "EQUITY"},
-    "EWZ": {"name": "BOLSA BRASIL", "corr": 1, "group": "EQUITY"},
-
-    # GLOBAL EQUITY
-    "ES=F": {"name": "S&P 500", "corr": 1, "group": "EQUITY"},
-    "NQ=F": {"name": "NASDAQ", "corr": 1, "group": "EQUITY"},
-
-    # VOL
-    "^VIX": {"name": "VOLATILIDADE (VIX)", "corr": -1, "group": "VOL"},
+    "FIXA11.SA": {"name": "RATES", "label": "JUROS", "corr": -1},
+    "BRL=X":     {"name": "FX", "label": "USD", "corr": -1},
+    "FIND11.SA": {"name": "EQ", "label": "FIN", "corr": 1},
+    "EWZ":       {"name": "EQ", "label": "BRL EQ", "corr": 1},
+    "ES=F":      {"name": "EQ", "label": "SPX", "corr": 1},
+    "NQ=F":      {"name": "EQ", "label": "NDX", "corr": 1},
+    "^VIX":      {"name": "VOL", "label": "VIX", "corr": -1},
 }
 
 # =========================
@@ -55,9 +49,9 @@ def engine():
         impact = np.tanh(z) * v["corr"]
 
         rows.append({
-            "Ativo": v["name"],
-            "Grupo": v["group"],
-            "Impacto": impact
+            "GROUP": v["name"],
+            "ASSET": v["label"],
+            "IMPACT": impact
         })
 
     return pd.DataFrame(rows)
@@ -67,86 +61,74 @@ if df.empty:
     st.stop()
 
 # =========================
-# METRICS GLOBAIS
+# CORE METRICS
 # =========================
-df["Peso"] = df["Impacto"].abs() / (df["Impacto"].abs().sum() + 1e-9)
+df["WEIGHT"] = df["IMPACT"].abs() / (df["IMPACT"].abs().sum() + 1e-9)
 
-flow_global = (df["Impacto"] * df["Peso"]).sum()
-hhi = np.sum(df["Peso"] ** 2)
+flow = (df["IMPACT"] * df["WEIGHT"]).sum()
+hhi = np.sum(df["WEIGHT"] ** 2)
 
-driver = df.loc[df["Impacto"].abs().idxmax(), "Ativo"]
+driver = df.loc[df["IMPACT"].abs().idxmax(), "ASSET"]
 
-# =========================
-# FUNÇÃO REGIME
-# =========================
-vix = df[df["Ativo"] == "VOLATILIDADE (VIX)"]["Impacto"].values
+vix = df[df["ASSET"] == "VIX"]["IMPACT"].values
 vix = vix[0] if len(vix) else 0
 
-spx = df[df["Ativo"] == "S&P 500"]["Impacto"].values
-spx = spx[0] if len(spx) else 0
-
+# =========================
+# REGIME ENGINE
+# =========================
 if vix > 0.6:
-    regime = "🚨 STRESS / RISK OFF"
-elif vix < -0.3 and flow_global > 0.2:
-    regime = "🟢 RISK ON FORTE"
+    regime = "RISKOFF"
+elif flow > 0.2:
+    regime = "RISKON"
+elif abs(flow) < 0.1:
+    regime = "NEUTRAL"
 elif hhi > 0.45:
-    regime = "⚠️ MERCADO CONCENTRADO"
-elif abs(flow_global) < 0.1:
-    regime = "⚪ COMPRESSÃO / NEUTRO"
+    regime = "CONCENTRATED"
 else:
-    regime = "🟡 DIRECIONAL MODERADO"
+    regime = "DIRECTIONAL"
 
 # =========================
-# HEADER
+# HEADER (BLOOMBERG STYLE)
 # =========================
 c1, c2, c3, c4 = st.columns(4)
 
 c1.metric("REGIME", regime)
 c2.metric("DRIVER", driver)
-c3.metric("FLUXO GLOBAL", f"{flow_global:.3f}")
+c3.metric("FLOW", f"{flow:.3f}")
 c4.metric("HHI", f"{hhi:.2f}")
 
 st.divider()
 
 # =========================
-# FUNÇÃO DE BLOCO
+# TABLE DESK STYLE
 # =========================
-def bloco(nome, grupo):
-    st.subheader(nome)
+st.markdown("### MARKET FLOW")
 
-    temp = df[df["Grupo"] == grupo].sort_values("Impacto", ascending=False)
+view = df.sort_values("IMPACT", ascending=False).copy()
 
-    for _, r in temp.iterrows():
-        cor = "🟢" if r["Impacto"] > 0 else "🔴"
-        st.write(f"{cor} {r['Ativo']}  |  {r['Impacto']:.3f}")
+def fmt(x):
+    sign = "▲" if x > 0 else "▼"
+    return f"{sign} {x:.3f}"
 
-# =========================
-# PAINEL POR REGIME
-# =========================
-col1, col2 = st.columns(2)
+view["IMPACT"] = view["IMPACT"].apply(fmt)
 
-with col1:
-    bloco("RATES (JUROS)", "RATES")
-    bloco("FX (CÂMBIO)", "FX")
-
-with col2:
-    bloco("EQUITY (RISCO)", "EQUITY")
-    bloco("VOL (STRESS)", "VOL")
+st.dataframe(
+    view[["GROUP", "ASSET", "IMPACT"]],
+    use_container_width=True,
+    hide_index=True
+)
 
 st.divider()
 
 # =========================
-# LEITURA FINAL
+# DESK VIEW (RAW LIST)
 # =========================
-st.subheader("LEITURA DE MERCADO")
+st.markdown("### TAPE")
 
-if flow_global > 0.2:
-    st.success("FLUXO POSITIVO DOMINANTE")
-elif flow_global < -0.2:
-    st.error("FLUXO NEGATIVO DOMINANTE")
-else:
-    st.warning("MERCADO SEM DIREÇÃO CLARA")
+for _, r in view.iterrows():
+    st.write(f"{r['GROUP']} | {r['ASSET']} | {r['IMPACT']}")
 
-st.caption(
-    f"v12.0 | regime system | flow={flow_global:.3f} | hhi={hhi:.2f} | driver={driver}"
-)
+# =========================
+# FOOTER
+# =========================
+st.caption(f"v13.0 | FLOW={flow:.3f} | HHI={hhi:.2f} | MODE=BLOOMBERG")
