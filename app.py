@@ -4,14 +4,11 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-# =========================
-# CONFIG
-# =========================
 st.set_page_config(page_title="MACA-QUANTI", layout="wide")
-st.title("🏛️ MACA-QUANTI | Força de Correlação (ESTÁVEL)")
+st.title("🏛️ MACA-QUANTI | Força de Correlação")
 
 # =========================
-# UNIVERSO (APENAS ATIVOS COM FLUXO REAL NO YAHOO)
+# UNIVERSO
 # =========================
 ativos = {
     "SP500": {"ticker": "SPY", "corr": 1},
@@ -20,7 +17,7 @@ ativos = {
     "FINANCEIRO": {"ticker": "XLF", "corr": 1},
     "TECNOLOGIA": {"ticker": "XLK", "corr": 1},
     "MATERIAIS": {"ticker": "XLB", "corr": 1},
-    "JUROS (LONGO)": {"ticker": "TLT", "corr": -1},
+    "JUROS": {"ticker": "TLT", "corr": -1},
 }
 
 # =========================
@@ -28,29 +25,13 @@ ativos = {
 # =========================
 @st.cache_data(ttl=60)
 def load(ticker):
-    try:
-        df = yf.download(
-            ticker,
-            period="10d",
-            interval="15m",
-            progress=False
-        )
-
-        if df is None or df.empty:
-            return None
-
-        serie = df["Close"].dropna()
-
-        if len(serie) < 30:
-            return None
-
-        return serie
-
-    except:
+    df = yf.download(ticker, period="10d", interval="15m", progress=False)
+    if df is None or df.empty:
         return None
+    return df["Close"].dropna()
 
 # =========================
-# FORÇA DE MOVIMENTO (ROBUSTA PARA INTRADAY)
+# FORÇA (SEM TANH - IMPORTANTE)
 # =========================
 def force(series):
     if series is None or len(series) < 10:
@@ -58,27 +39,21 @@ def force(series):
 
     series = series.dropna()
 
-    try:
-        # retornos curtos (mais estáveis que 1 candle apenas)
-        r1 = (series.iloc[-1] / series.iloc[-2]) - 1
-        r5 = (series.iloc[-1] / series.iloc[-5]) - 1
-        r10 = (series.iloc[-1] / series.iloc[-10]) - 1
+    r1 = (series.iloc[-1] / series.iloc[-2]) - 1
+    r5 = (series.iloc[-1] / series.iloc[-5]) - 1
+    r10 = (series.iloc[-1] / series.iloc[-10]) - 1
 
-        retorno = (0.5 * r1 + 0.3 * r5 + 0.2 * r10)
+    retorno = (0.5 * r1 + 0.3 * r5 + 0.2 * r10)
 
-        # volatilidade mais longa para não zerar
-        vol = series.pct_change().rolling(30).std().iloc[-1]
+    vol = series.pct_change().rolling(20).std().iloc[-1]
 
-        if pd.isna(vol) or vol < 1e-6:
-            vol = 0.001
+    if pd.isna(vol) or vol < 1e-6:
+        vol = 0.001
 
-        score = retorno / vol
+    score = retorno / vol
 
-        # compressão leve (não mata o sinal)
-        return float(np.tanh(score * 4))
-
-    except:
-        return 0.0
+    # 🔥 AQUI É A CORREÇÃO CRÍTICA
+    return float(score)
 
 # =========================
 # PROCESSAMENTO
@@ -93,12 +68,9 @@ for name, cfg in ativos.items():
 
     f = force(s)
 
-    try:
-        direction = np.sign(float(s.iloc[-1]) - float(s.iloc[-2]))
-    except:
-        direction = 0
+    direction = np.sign(float(s.iloc[-1]) - float(s.iloc[-2]))
 
-    impact = float(f) * cfg["corr"] * float(direction) * 100
+    impact = f * cfg["corr"] * direction * 100
 
     rows.append({
         "Ativo": name,
@@ -107,15 +79,10 @@ for name, cfg in ativos.items():
 
 df = pd.DataFrame(rows)
 
-if df.empty:
-    st.error("Sem dados do Yahoo Finance")
-    st.stop()
-
-# garante consistência numérica
 df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
 
 # =========================
-# PRESSÃO AGREGADA
+# PRESSÃO
 # =========================
 buy = df.loc[df["Impacto"] > 0, "Impacto"].sum()
 sell = abs(df.loc[df["Impacto"] < 0, "Impacto"].sum())
@@ -125,18 +92,9 @@ total = buy + sell + 1e-9
 pct_buy = buy / total
 pct_sell = sell / total
 
-if pct_buy > 0.55:
-    trend = "🟢 COMPRA"
-elif pct_sell > 0.55:
-    trend = "🔴 VENDA"
-else:
-    trend = "🟡 NEUTRO"
+trend = "🟢 COMPRA" if pct_buy > 0.55 else "🔴 VENDA" if pct_sell > 0.55 else "🟡 NEUTRO"
 
-# =========================
-# LÍDER
-# =========================
-df = df.sort_values("Impacto", ascending=False)
-leader = df.iloc[0]["Ativo"]
+leader = df.sort_values("Impacto", ascending=False).iloc[0]["Ativo"]
 
 # =========================
 # UI
@@ -156,4 +114,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI | correlação intraday estabilizada v3")
+st.caption("MACA-QUANTI | versão sem compressão (debug real de sinal)")
