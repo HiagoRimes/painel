@@ -4,15 +4,13 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-# Configuração da página
-st.set_config = st.set_page_config(page_title="MACA-QUANTI ELITE v5.0", layout="centered")
-st.title("🍎 MACA-QUANTI ELITE v5.0")
+# Configuração
+st.set_page_config(page_title="MACA-QUANTI ELITE v5.1", layout="centered")
+st.title("🍎 MACA-QUANTI ELITE v5.1")
 
-# Inicialização de memória
 if 'historico_lideranca' not in st.session_state:
     st.session_state.historico_lideranca = []
 
-# Dicionário de ativos
 vies_ativos = {
     "FIXA11.SA": {"nome": "JUROS LONGOS", "corr": -1.0, "peso": 1.0, "grupo": "JUROS"},
     "BRL=X":     {"nome": "DÓLAR",        "corr": -1.0, "peso": 0.9, "grupo": "DÓLAR"},
@@ -38,13 +36,14 @@ def get_stats(cod):
     conviccao = np.clip(((vol_rel * 0.3) + (persistencia * 0.4) + (abs(aceleracao) * 0.3)) * 100, 10, 95)
     return z, conviccao
 
-# Processamento dos Dados
+# Processamento
 dados = []
 for cod, cfg in vies_ativos.items():
     z, conv = get_stats(cod)
     score = 100 * np.tanh(z * cfg['corr'] * 0.5)
+    sentido = "🟢 ALTA" if score > 0 else "🔴 BAIXA"
     dom = abs(z) * cfg['peso'] * (conv / 100)
-    dados.append({"Ativo": cfg['nome'], "Grupo": cfg['grupo'], "Dominancia": dom, "Score": score, "Corr": cfg['corr']})
+    dados.append({"Ativo": cfg['nome'], "Grupo": cfg['grupo'], "Dominancia": dom, "Score": score, "Sentido": sentido})
 
 df = pd.DataFrame(dados)
 df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
@@ -59,13 +58,12 @@ df_macro['Pct_Dominancia'] = (df_macro['Dominancia'] / df_macro['Dominancia'].su
 df_macro = df_macro.sort_values("Dominancia", ascending=False)
 
 driver_atual = df.sort_values("Dominancia", ascending=False).iloc[0]
-st.metric(f"DRIVER ATUAL: {driver_atual['Ativo']}", f"{driver_atual['Pct_Dominancia']:.0f}%")
+st.metric(f"DRIVER ATUAL: {driver_atual['Ativo']} ({driver_atual['Sentido']})", f"{driver_atual['Pct_Dominancia']:.0f}%")
 st.dataframe(df_macro.style.format({"Pct_Dominancia": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True)
 
-# 2. HHI e Consenso Ponderado
+# 2. HHI e Consenso
 hhi = (df['Pct_Dominancia'] / 100).pow(2).sum() * 10000
 status_hhi = "Muito Disperso" if hhi < 1500 else ("Equilibrado" if hhi < 2500 else ("Concentrado" if hhi < 4000 else "Dominância Extrema"))
-
 f_alta = df[df['Score'] > 0]['Dominancia'].sum()
 f_baixa = df[df['Score'] < 0]['Dominancia'].sum()
 total_f = f_alta + f_baixa
@@ -89,5 +87,5 @@ alinh = np.average(df['Score'], weights=df['Dominancia'])
 st.write(f"### **📊 ALINHAMENTO: {abs(alinh):.1f}%**")
 st.progress(min(abs(alinh) / 100, 1))
 
-# 5. Tabela Detalhada
-st.dataframe(df[['Ativo', 'Grupo', 'Pct_Dominancia', 'Score']].rename(columns={'Pct_Dominancia': 'Dom %'}).style.format({"Dom %": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True)
+# 5. Tabela Detalhada com Sentido
+st.dataframe(df[['Ativo', 'Grupo', 'Pct_Dominancia', 'Sentido', 'Score']].rename(columns={'Pct_Dominancia': 'Dom %'}).style.format({"Dom %": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True)
