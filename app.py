@@ -26,15 +26,28 @@ ativos = {
 @st.cache_data(ttl=60)
 def load(ticker):
     try:
-        df = yf.download(ticker, period="10d", interval="15m", progress=False)
+        df = yf.download(
+            ticker,
+            period="10d",
+            interval="15m",
+            progress=False
+        )
+
         if df is None or df.empty:
             return None
-        return df["Close"].dropna()
+
+        close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+
+        if len(close) < 20:
+            return None
+
+        return close
+
     except:
         return None
 
 # =========================
-# FORÇA (TOTALMENTE ESCALAR)
+# FORÇA
 # =========================
 def force(series):
     if series is None or len(series) < 10:
@@ -43,15 +56,19 @@ def force(series):
     series = series.dropna()
 
     try:
-        r1 = (series.iloc[-1] / series.iloc[-2]) - 1
-        r5 = (series.iloc[-1] / series.iloc[-5]) - 1
-        r10 = (series.iloc[-1] / series.iloc[-10]) - 1
+        last = float(series.iloc[-1]) if pd.notna(series.iloc[-1]) else None
+        prev = float(series.iloc[-2]) if pd.notna(series.iloc[-2]) else None
+
+        if last is None or prev is None:
+            return 0.0
+
+        r1 = (last / prev) - 1
+        r5 = (float(series.iloc[-1]) / float(series.iloc[-5])) - 1
+        r10 = (float(series.iloc[-1]) / float(series.iloc[-10])) - 1
 
         retorno = (0.5 * r1 + 0.3 * r5 + 0.2 * r10)
 
         vol_series = series.pct_change().rolling(20).std()
-
-        # 🔥 GARANTIA ABSOLUTA DE ESCALAR
         vol = vol_series.iloc[-1] if len(vol_series.dropna()) > 0 else np.nan
 
         vol = float(vol) if pd.notna(vol) else 0.001
@@ -59,9 +76,7 @@ def force(series):
         if vol <= 1e-6:
             vol = 0.001
 
-        score = retorno / vol
-
-        return float(score)
+        return float(retorno / vol)
 
     except:
         return 0.0
@@ -79,7 +94,14 @@ for name, cfg in ativos.items():
 
     f = force(s)
 
-    direction = np.sign(float(s.iloc[-1]) - float(s.iloc[-2]))
+    # 🔥 proteção total contra dados inválidos
+    try:
+        last_price = float(s.iloc[-1])
+        prev_price = float(s.iloc[-2])
+    except:
+        continue
+
+    direction = np.sign(last_price - prev_price)
 
     impact = float(f) * cfg["corr"] * float(direction) * 100
 
@@ -91,7 +113,7 @@ for name, cfg in ativos.items():
 df = pd.DataFrame(rows)
 
 if df.empty:
-    st.error("Sem dados Yahoo Finance")
+    st.error("Sem dados Yahoo Finance válidos")
     st.stop()
 
 df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
@@ -129,4 +151,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI | versão estabilizada final")
+st.caption("MACA-QUANTI | versão blindada contra Yahoo")
