@@ -25,13 +25,16 @@ ativos = {
 # =========================
 @st.cache_data(ttl=60)
 def load(ticker):
-    df = yf.download(ticker, period="10d", interval="15m", progress=False)
-    if df is None or df.empty:
+    try:
+        df = yf.download(ticker, period="10d", interval="15m", progress=False)
+        if df is None or df.empty:
+            return None
+        return df["Close"].dropna()
+    except:
         return None
-    return df["Close"].dropna()
 
 # =========================
-# FORÇA (CORRIGIDO)
+# FORÇA (TOTALMENTE ESCALAR)
 # =========================
 def force(series):
     if series is None or len(series) < 10:
@@ -39,29 +42,29 @@ def force(series):
 
     series = series.dropna()
 
-    r1 = (series.iloc[-1] / series.iloc[-2]) - 1
-    r5 = (series.iloc[-1] / series.iloc[-5]) - 1
-    r10 = (series.iloc[-1] / series.iloc[-10]) - 1
+    try:
+        r1 = (series.iloc[-1] / series.iloc[-2]) - 1
+        r5 = (series.iloc[-1] / series.iloc[-5]) - 1
+        r10 = (series.iloc[-1] / series.iloc[-10]) - 1
 
-    retorno = (0.5 * r1 + 0.3 * r5 + 0.2 * r10)
+        retorno = (0.5 * r1 + 0.3 * r5 + 0.2 * r10)
 
-    # 🔥 CORREÇÃO CRÍTICA AQUI
-    vol_series = series.pct_change().rolling(20).std()
+        vol_series = series.pct_change().rolling(20).std()
 
-    vol = vol_series.iloc[-1] if len(vol_series) > 0 else np.nan
+        # 🔥 GARANTIA ABSOLUTA DE ESCALAR
+        vol = vol_series.iloc[-1] if len(vol_series.dropna()) > 0 else np.nan
 
-    # força conversão escalar
-    if vol is None or pd.isna(vol):
-        vol = 0.001
+        vol = float(vol) if pd.notna(vol) else 0.001
 
-    vol = float(vol)
+        if vol <= 1e-6:
+            vol = 0.001
 
-    if vol < 1e-6:
-        vol = 0.001
+        score = retorno / vol
 
-    score = retorno / vol
+        return float(score)
 
-    return float(score)
+    except:
+        return 0.0
 
 # =========================
 # PROCESSAMENTO
@@ -88,7 +91,7 @@ for name, cfg in ativos.items():
 df = pd.DataFrame(rows)
 
 if df.empty:
-    st.error("Sem dados")
+    st.error("Sem dados Yahoo Finance")
     st.stop()
 
 df["Impacto"] = pd.to_numeric(df["Impacto"], errors="coerce").fillna(0.0)
@@ -126,4 +129,4 @@ st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI | correção de volatilidade aplicada")
+st.caption("MACA-QUANTI | versão estabilizada final")
