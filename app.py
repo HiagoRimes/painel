@@ -6,69 +6,71 @@ import numpy as np
 st.set_page_config(page_title="MACA-QUANTI ELITE", layout="centered")
 st.title("🍎 MACA-QUANTI ELITE")
 
-# 1. Configuração com Pesos Estruturais (Item 1 e 6)
+# Configuração com Pesos Estruturais
 vies_ativos = {
-    "FIXA11.SA": {"nome": "DI FUTURO", "corr": -1.0, "peso": 1.00},
-    "BRL=X":     {"nome": "DÓLAR",     "corr": -1.0, "peso": 0.90},
-    "FIND11.SA": {"nome": "IFNC",      "corr":  1.0, "peso": 0.80},
-    "EWZ":       {"nome": "EWZ",       "corr":  1.0, "peso": 0.70},
-    "ES=F":      {"nome": "S&P500",    "corr":  1.0, "peso": 0.60},
-    "^VIX":      {"nome": "VIX",       "corr": -1.0, "peso": 0.50},
-    "NQ=F":      {"nome": "NASDAQ",    "corr":  1.0, "peso": 0.40},
+    "FIXA11.SA": {"nome": "DI FUTURO", "corr": -1.0, "peso": 1.0},
+    "BRL=X":     {"nome": "DÓLAR",     "corr": -1.0, "peso": 0.9},
+    "FIND11.SA": {"nome": "IFNC",      "corr":  1.0, "peso": 0.8},
+    "EWZ":       {"nome": "EWZ",       "corr":  1.0, "peso": 0.7},
+    "ES=F":      {"nome": "S&P500",    "corr":  1.0, "peso": 0.6},
+    "^VIX":      {"nome": "VIX",       "corr": -1.0, "peso": 0.5},
+    "NQ=F":      {"nome": "NASDAQ",    "corr":  1.0, "peso": 0.4},
 }
 
 def get_stats(cod):
     df = yf.download(cod, period="30d", interval="1d", progress=False)
     c = df['Close'].iloc[:, 0] if isinstance(df['Close'], pd.DataFrame) else df['Close']
     c = pd.to_numeric(c, errors='coerce').dropna()
-    # Z-Score
     z = (float(c.iloc[-1]) - float(c.rolling(20).mean().iloc[-1])) / float(c.rolling(20).std().iloc[-1])
-    # Convicção (proxy: Volatilidade recente)
-    conviccao = float(c.pct_change().std() * 1000) 
-    return float(c.iloc[-1]), z, conviccao
+    # Volatilidade para convicção
+    vol = float(c.pct_change().std())
+    return z, vol
 
 # Processamento
 dados = []
 for cod, cfg in vies_ativos.items():
-    preco, z, conv = get_stats(cod)
+    z, vol = get_stats(cod)
     
-    # Domínio: Força Estatística x Peso x Correlação Absoluta
-    forca_direcional = z * cfg['corr']
+    # 1. Normalização Logística (Sigmoid) para Scores (Objetivo: 30-70)
+    # k=1.5 centraliza melhor o range
+    conviccao = (1 / (1 + np.exp(-1.5 * (vol * 50 - 2)))) * 100
+    score_win = np.clip(z * cfg['corr'] * 33, -100, 100)
+    
     dominancia = abs(z) * cfg['peso'] * abs(cfg['corr'])
     
     dados.append({
         "Ativo": cfg['nome'],
-        "Preço": preco,
-        "Direcao": forca_direcional * 100, # Score Direcional (-100 a +100)
-        "Conviccao": min(conv * 20, 100),  # Score 0-100
         "Dominancia": dominancia,
-        "Corr_Status": "🟢 Confirmando" if forca_direcional > 0 else "🔴 Quebra"
+        "Conviccao": conviccao,
+        "Score": score_win,
+        "Corr": cfg['corr']
     })
 
 df = pd.DataFrame(dados)
+df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
 
-# 2. Módulo de Dominância (Item 1 e 2)
-total_dom = df['Dominancia'].sum()
-df['Pct_Dominancia'] = (df['Dominancia'] / total_dom) * 100
+# 2. Resumo Executivo e Driver
+lider = df.loc[df['Dominancia'].idxmax()]
+alinhamento = df['Score'].mean()
 
 st.subheader("🎯 Driver Dominante")
-lider = df.loc[df['Dominancia'].idxmax()]
-st.write(f"### **{lider['Ativo']}**")
-st.write(f"**Dominância:** {lider['Pct_Dominancia']:.1f}% | **Confiança:** {'Alta' if lider['Pct_Dominancia'] > 30 else 'Moderada'}")
+col1, col2 = st.columns(2)
+col1.metric("Líder", lider['Ativo'])
+col2.metric("Impacto WIN", f"{lider['Score']:.1f}")
 
-# 3. Painel de Alinhamento (Item 5)
-alinhamento = df['Direcao'].mean()
 st.write("---")
-st.write(f"**ALINHAMENTO GERAL:** {alinhamento:.1f}%")
-st.progress(min(max((alinhamento + 100) / 200, 0), 1))
+# 3. Classificação e Alinhamento
+status_alinh = "Altista" if alinhamento > 0 else "Baixista"
+st.write(f"### **ALINHAMENTO GERAL: {abs(alinhamento):.1f}% ({status_alinh})**")
+st.progress(min(abs(alinhamento) / 100, 1))
 
-# 4. Tabela de Scores
-st.write("### 📊 Ranking Estrutural")
-st.table(df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Direcao', 'Corr_Status']]
-         .rename(columns={'Pct_Dominancia': 'Dominância', 'Direcao': 'Score WIN'}))
+# Resumo Automático
+st.write("### 📝 Leitura do Momento")
+resumo = f"✓ {lider['Ativo']} lidera o mercado com dominância de {lider['Pct_Dominancia']:.1f}%.\n"
+resumo += f"✓ Alinhamento de {abs(alinhamento):.0f}% indica um viés {status_alinh} "
+resumo += "Forte" if abs(alinhamento) > 75 else ("Moderado" if abs(alinhamento) > 50 else "Fraco")
+st.info(resumo)
 
-# Regime de mercado simples (Item 3)
-st.write("### 🏷️ Regime de Mercado")
-if abs(alinhamento) > 50: st.success("🟢 Tendência Forte")
-elif abs(alinhamento) > 20: st.warning("🟡 Tendência Moderada")
-else: st.info("⚪ Lateral / Compressão")
+# 4. Tabela Final
+df['Status'] = df.apply(lambda x: "🟢 Confirmando" if x['Score'] * x['Corr'] > 0 else "🟡 Divergente", axis=1)
+st.table(df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score', 'Status']].rename(columns={'Pct_Dominancia': 'Dom %'}))
