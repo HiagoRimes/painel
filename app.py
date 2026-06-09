@@ -168,4 +168,4 @@ if dados_finais:
         fig_linhas = go.Figure()
         for nome_ativo, serie in series_z_score.items():
             fig_linhas.add_trace(go.Scatter(
-                x=serie.index.strftime('%d
+                x=serie.index.strftime('%d/%m'
