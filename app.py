@@ -45,14 +45,22 @@ col1, col2 = st.columns(2)
 col1.metric("Primário", df.iloc[0]['Ativo'])
 col2.metric("Secundário", df.iloc[1]['Ativo'])
 
-# 4. Alinhamento e Leitura do Momento
+# 4. Alinhamento e Leitura do Momento (Mensagens alteradas)
 alinh = df['Score'].mean()
+
+if alinh > 0:
+    msg_sentido = "Tendência de Alta"
+elif alinh < 0:
+    msg_sentido = "Tendência de Baixa"
+else:
+    msg_sentido = "Lateralização"
+
 st.write(f"### **ALINHAMENTO GERAL: {abs(alinh):.1f}%**")
-st.write(f"Sentido: {'🟢 Altista' if alinh > 0 else '🔴 Baixista'}")
+st.write(f"Sentido: {msg_sentido}")
 st.progress(min(abs(alinh) / 100, 1))
 
 st.write("### 📝 Leitura do Momento")
-resumo = f"O mercado é conduzido pelo {df.iloc[0]['Ativo']}. A fragmentação é {'Alta' if abs(alinh) < 40 else 'Baixa'}. Viés: {'Altista' if alinh > 0 else 'Baixista'}."
+resumo = f"O mercado é conduzido pelo {df.iloc[0]['Ativo']}. A fragmentação é {'Alta' if abs(alinh) < 40 else 'Baixa'}. Sentido: {msg_sentido}."
 st.success(resumo)
 
 # 5. Tabela de Scores
