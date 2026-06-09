@@ -7,27 +7,7 @@ import numpy as np
 st.set_page_config(page_title="MACA-QUANTI ELITE", layout="centered")
 st.title("🍎 MACA-QUANTI ELITE")
 
-# 1. MONITOR IBOV (Blindado para não travar o restante)
-st.subheader("📍 Monitor IBOV")
-try:
-    # Usando período '1d' que é mais estável na API
-    df_ibov = yf.download("^BVSP", period="1d", interval="5m", progress=False)
-    if not df_ibov.empty:
-        p_atual = df_ibov['Close'].iloc[-1]
-        p_abertura = df_ibov['Open'].iloc[0]
-        var = ((p_atual - p_abertura) / p_abertura) * 100
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Atual", f"{p_atual:,.0f}")
-        c2.metric("Abertura", f"{p_abertura:,.0f}")
-        c3.metric("Var %", f"{var:,.2f}%")
-    else:
-        st.write("Dados temporariamente indisponíveis.")
-except Exception:
-    st.write("Monitor IBOV em manutenção.")
-
-st.write("---")
-
-# 2. Definição dos ativos
+# 1. Definição dos ativos
 vies_ativos = {
     "FIXA11.SA": {"nome": "DI FUTURO", "corr": -1.0, "peso": 1.0},
     "BRL=X":     {"nome": "DÓLAR",     "corr": -1.0, "peso": 0.9},
@@ -38,7 +18,7 @@ vies_ativos = {
     "NQ=F":      {"nome": "NASDAQ",    "corr":  1.0, "peso": 0.4},
 }
 
-# 3. Processamento de dados
+# 2. Processamento dos Dados
 def get_stats(cod):
     df = yf.download(cod, period="30d", interval="1d", progress=False)
     if df.empty: return 0, 0
@@ -59,19 +39,41 @@ for cod, cfg in vies_ativos.items():
 df = pd.DataFrame(dados).sort_values("Dominancia", ascending=False)
 df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
 
-# 4. Exibição da Hierarquia e Tabela
+# 3. Hierarquia de Drivers
 st.subheader("🎯 Hierarquia de Drivers")
 col1, col2 = st.columns(2)
 col1.metric("Primário", df.iloc[0]['Ativo'])
 col2.metric("Secundário", df.iloc[1]['Ativo'])
 
+# 4. Alinhamento e Leitura do Momento
 alinh = df['Score'].mean()
+st.write(f"### **ALINHAMENTO GERAL: {abs(alinh):.1f}%**")
+st.write(f"Sentido: {'🟢 Altista' if alinh > 0 else '🔴 Baixista'}")
 st.progress(min(abs(alinh) / 100, 1))
 
+st.write("### 📝 Leitura do Momento")
+resumo = f"O mercado é conduzido pelo {df.iloc[0]['Ativo']}. A fragmentação é {'Alta' if abs(alinh) < 40 else 'Baixa'}. Viés: {'Altista' if alinh > 0 else 'Baixista'}."
+st.success(resumo)
+
+# 5. Tabela de Scores
 df['Status'] = df.apply(lambda x: "🟢 Conf" if x['Score'] * x['Corr'] > 0 else ("🔴 Quebra" if x['Score'] * x['Corr'] < -50 else "🟡 Div"), axis=1)
 st.dataframe(df[['Ativo', 'Pct_Dominancia', 'Conviccao', 'Score', 'Status']].rename(columns={'Pct_Dominancia': 'Dom %'}), hide_index=True, use_container_width=True)
 
-# 5. Legendas fixas para não sumir
+# 6. Guia de Leitura e Legendas
 st.write("---")
-with st.expander("📖 Guia de Leitura"):
-    st.write("🟢 Conf (Ajuda o movimento) | 🟡 Div (Cautela) | 🔴 Quebra (Possível reversão).")
+st.write("### 📖 Guia de Leitura e Legendas")
+
+with st.expander("📌 Legenda de Status de Correlação"):
+    st.info("""
+    - **🟢 Conf:** Ativo alinhado com o WIN. Ajuda o movimento.
+    - **🟡 Div:** Ativo hesitante. Correlação falhando, cautela.
+    - **🔴 Quebra:** O ativo empurra contra a natureza do WIN (Alerta de possível reversão).
+    """)
+
+with st.expander("📈 Como ler o nosso gráfico de Dominância"):
+    st.write("""
+    1. **Driver Primário:** É o ativo que, neste exato momento, detém o maior poder de puxar o preço do Mini Índice (WIN).
+    2. **Dominância (%):** Indica o peso real de influência de cada ativo.
+    3. **Convicção:** Mede a 'energia' por trás do movimento. Quanto maior, mais provável que o movimento tenha continuidade.
+    4. **Score WIN (-100 a +100):** Pressão no índice. Acima de 0 pressiona para a alta, abaixo de 0 pressiona para a queda.
+    """)
