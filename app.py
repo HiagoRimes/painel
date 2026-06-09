@@ -5,65 +5,58 @@ import numpy as np
 from datetime import datetime
 
 st.set_page_config(page_title="MACA-QUANTI", layout="wide")
-st.title("🏛️ MACA-QUANTI | Radar de Dominância")
+st.title("🏛️ MACA-QUANTI | Força de Correlação")
 
 # =========================
-# UNIVERSO ESTÁVEL (REALISTA PARA YAHOO)
+# UNIVERSO (SEU SISTEMA)
 # =========================
 ativos = {
-    "MERCADO EUA": {"ticker": "SPY", "corr": 1},
-    "TECNOLOGIA": {"ticker": "QQQ", "corr": 1},
-    "FINANCEIRO": {"ticker": "XLF", "corr": 1},
-    "MATERIAIS": {"ticker": "XLB", "corr": 1},
-    "JUROS LONGOS": {"ticker": "TLT", "corr": -1},
+    "JUROS": {"ticker": "TLT", "corr": -1},
+    "DÓLAR": {"ticker": "UUP", "corr": -1},
+    "IFNC": {"ticker": "XLF", "corr": 1},
     "BRASIL": {"ticker": "EWZ", "corr": 1},
-    "PETROBRAS": {"ticker": "PETR4.SA", "corr": 1},
-    "VALE": {"ticker": "VALE3.SA", "corr": 1},
+    "SP500": {"ticker": "SPY", "corr": 1},
+    "VIX": {"ticker": "^VIX", "corr": -1},
+    "NASDAQ": {"ticker": "QQQ", "corr": 1},
 }
 
 # =========================
-# DADOS (ROBUSTO)
+# DADOS
 # =========================
 @st.cache_data(ttl=60)
-def baixar(ticker):
+def load(ticker):
     try:
-        df = yf.download(
-            ticker,
-            period="5d",
-            interval="15m",
-            progress=False
-        )
-
+        df = yf.download(ticker, period="10d", interval="30m", progress=False)
         if df is None or df.empty:
             return None
-
-        serie = df["Close"].dropna()
-
-        if len(serie) < 10:
-            return None
-
-        return serie
-
+        return df["Close"].dropna()
     except:
         return None
 
 # =========================
-# FORÇA SIMPLES E ESTÁVEL
+# FORÇA DE MOVIMENTO (AJUSTADA PARA NÃO ZERAR)
 # =========================
-def forca(series):
+def force(series):
+    if series is None or len(series) < 10:
+        return 0
+
     try:
         series = series.dropna()
 
-        if len(series) < 10:
-            return 0
+        # retorno curto + médio (evita ruído extremo)
+        r1 = (series.iloc[-1] / series.iloc[-2]) - 1
+        r5 = (series.iloc[-1] / series.iloc[-5]) - 1
 
-        retorno = (series.iloc[-1] / series.iloc[-3]) - 1
+        # suavização (isso evita tudo virar zero)
+        raw = (0.7 * r1 + 0.3 * r5) * 100
+
+        # normalização leve por volatilidade recente
         vol = series.pct_change().rolling(10).std().iloc[-1]
 
         if pd.isna(vol) or vol == 0:
-            return 0
+            return raw
 
-        return np.tanh(retorno / vol)
+        return raw / (vol * 100 + 1e-9)
 
     except:
         return 0
@@ -71,74 +64,74 @@ def forca(series):
 # =========================
 # PROCESSAMENTO
 # =========================
-resultados = []
+result = []
 
-for nome, cfg in ativos.items():
+for name, cfg in ativos.items():
 
-    serie = baixar(cfg["ticker"])
-    if serie is None:
+    s = load(cfg["ticker"])
+    if s is None:
         continue
 
-    f = forca(serie)
+    f = force(s)
 
     try:
-        direcao = np.sign(serie.iloc[-1] - serie.iloc[-2])
+        direction = np.sign(s.iloc[-1] - s.iloc[-2])
     except:
-        direcao = 0
+        direction = 0
 
-    impacto = f * cfg["corr"] * direcao * 100
+    impact = f * cfg["corr"] * direction * 100
 
-    resultados.append({
-        "Ativo": nome,
-        "Impacto": impacto
+    result.append({
+        "Ativo": name,
+        "Impacto": impact
     })
 
-df = pd.DataFrame(resultados)
+df = pd.DataFrame(result)
 
 if df.empty:
-    st.error("Sem dados Yahoo (fallback ativado)")
+    st.error("Sem dados disponíveis")
     st.stop()
 
 # =========================
-# PRESSÃO
+# PRESSÃO AGREGADA
 # =========================
-compra = df[df["Impacto"] > 0]["Impacto"].sum()
-venda = abs(df[df["Impacto"] < 0]["Impacto"].sum())
+buy = df[df["Impacto"] > 0]["Impacto"].sum()
+sell = abs(df[df["Impacto"] < 0]["Impacto"].sum())
 
-total = compra + venda + 1e-9
+total = buy + sell + 1e-9
 
-pct_compra = compra / total
-pct_venda = venda / total
+pct_buy = buy / total
+pct_sell = sell / total
 
-if pct_compra > 0.55:
-    tendencia = "🟢 COMPRA"
-elif pct_venda > 0.55:
-    tendencia = "🔴 VENDA"
+if pct_buy > 0.55:
+    trend = "🟢 COMPRA"
+elif pct_sell > 0.55:
+    trend = "🔴 VENDA"
 else:
-    tendencia = "🟡 NEUTRO"
+    trend = "🟡 NEUTRO"
 
 # =========================
 # LÍDER
 # =========================
 df = df.sort_values("Impacto", ascending=False)
-lider = df.iloc[0]["Ativo"]
+leader = df.iloc[0]["Ativo"]
 
 # =========================
 # UI
 # =========================
-col1, col2, col3 = st.columns(3)
+c1, c2, c3 = st.columns(3)
 
-col1.metric("Tendência", tendencia)
-col2.metric("Líder", lider)
-col3.metric("Hora", datetime.now().strftime("%H:%M:%S"))
+c1.metric("Tendência", trend)
+c2.metric("Líder", leader)
+c3.metric("Hora", datetime.now().strftime("%H:%M:%S"))
 
 st.divider()
 
-st.write(f"🟢 Compra: {pct_compra:.2%}")
-st.write(f"🔴 Venda: {pct_venda:.2%}")
+st.write(f"🟢 Compra: {pct_buy:.2%}")
+st.write(f"🔴 Venda: {pct_sell:.2%}")
 
 st.divider()
 
 st.dataframe(df, use_container_width=True)
 
-st.caption("MACA-QUANTI v1 | versão estável Yahoo")
+st.caption("MACA-QUANTI | correlação + força relativa")
