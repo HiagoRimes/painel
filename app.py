@@ -19,6 +19,7 @@ vies_ativos = {
 }
 
 def get_stats(cod):
+    # Obtém dados dos últimos 60 dias
     df = yf.download(cod, period="60d", interval="1d", progress=False)
     if df.empty: return 0, 0, 0
     c = pd.to_numeric(df['Close'].iloc[:, 0], errors='coerce').dropna()
@@ -51,10 +52,19 @@ for cod, cfg in vies_ativos.items():
 df = pd.DataFrame(dados)
 df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
 
-# 2. Painel Macro (Ponderado)
+# 2. Painel Macro (Ponderado e Corrigido)
 st.subheader("🌐 Forças Macro")
-def weighted_avg(x): return np.average(x['Score'], weights=x['Dominancia'])
-df_macro = df.groupby("Grupo").agg({"Dominancia": "sum", "Score": weighted_avg}).reset_index()
+
+def calculate_weighted_avg(df_group):
+    return np.average(df_group['Score'], weights=df_group['Dominancia'])
+
+df_macro = df.groupby("Grupo").apply(
+    lambda x: pd.Series({
+        'Dominancia': x['Dominancia'].sum(),
+        'Score': calculate_weighted_avg(x)
+    })
+).reset_index()
+
 df_macro['Pct_Dominancia'] = (df_macro['Dominancia'] / df_macro['Dominancia'].sum()) * 100
 df_macro = df_macro.sort_values("Dominancia", ascending=False)
 
