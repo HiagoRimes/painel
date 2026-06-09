@@ -4,8 +4,8 @@ import pandas as pd
 import numpy as np
 
 # Configuração
-st.set_page_config(page_title="MACA-QUANTI ELITE v4.0", layout="centered")
-st.title("🍎 MACA-QUANTI ELITE v4.0")
+st.set_page_config(page_title="MACA-QUANTI ELITE v4.1", layout="centered")
+st.title("🍎 MACA-QUANTI ELITE v4.1")
 
 vies_ativos = {
     "FIXA11.SA": {"nome": "DI FUTURO", "corr": -1.0, "peso": 1.0, "grupo": "JUROS"},
@@ -44,19 +44,21 @@ for cod, cfg in vies_ativos.items():
 df = pd.DataFrame(dados)
 df['Pct_Dominancia'] = (df['Dominancia'] / df['Dominancia'].sum()) * 100
 
-# 1. Painel Macro com HHI (Concentração)
+# 1. Painel Macro (Visualização por Grupo Restaurada)
 st.subheader("🌐 Forças Macro")
 df_macro = df.groupby("Grupo").agg({"Dominancia": "sum", "Score": lambda x: np.average(x, weights=df.loc[x.index, 'Dominancia'])}).reset_index()
 df_macro['Pct_Dominancia'] = (df_macro['Dominancia'] / df_macro['Dominancia'].sum()) * 100
+df_macro = df_macro.sort_values("Dominancia", ascending=False)
 
-# Cálculo HHI
+st.metric("DOMINÂNCIA MACRO 🎯", df_macro.iloc[0]['Grupo'])
+st.dataframe(df_macro.style.format({"Pct_Dominancia": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True, use_container_width=True)
+
+# 2. Índice HHI (Fragmentação)
 hhi = (df['Pct_Dominancia'] / 100).pow(2).sum() * 10000
 frag_hhi = (1 - (hhi/10000)) * 100
-
-st.metric("DOMINÂNCIA MACRO 🎯", df_macro.sort_values("Dominancia", ascending=False).iloc[0]['Grupo'])
 st.write(f"**Índice de Fragmentação (HHI):** {frag_hhi:.1f} | {'Concentrado' if hhi > 2500 else 'Disperso'}")
 
-# 2. Painel de Consenso
+# 3. Consenso de Mercado
 st.subheader("⚖️ Consenso de Mercado")
 c_alta = len(df[df['Score'] > 0])
 c_baixa = len(df[df['Score'] < 0])
@@ -64,16 +66,14 @@ col_c1, col_c2 = st.columns(2)
 col_c1.metric("Pressionando ALTA", c_alta)
 col_c2.metric("Pressionando BAIXA", c_baixa)
 
-# 3. Hierarquia e Mudança de Liderança
+# 4. Hierarquia e Alinhamento
 st.write("---")
 st.subheader("🎯 Hierarquia de Drivers")
 top_driver = df.sort_values("Dominancia", ascending=False).iloc[0]['Ativo']
 st.write(f"**Driver Atual:** {top_driver}")
-
-# 4. Alinhamento Ponderado
 alinh = np.average(df['Score'], weights=df['Dominancia'])
 st.write(f"### **📊 ALINHAMENTO: {abs(alinh):.1f}%**")
 st.progress(min(abs(alinh) / 100, 1))
 
 # 5. Tabela Detalhada
-st.dataframe(df[['Ativo', 'Pct_Dominancia', 'Score']].style.format({"Pct_Dominancia": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True)
+st.dataframe(df[['Ativo', 'Grupo', 'Pct_Dominancia', 'Score']].rename(columns={'Pct_Dominancia': 'Dom %'}).style.format({"Dom %": "{:.1f}%", "Score": "{:.0f}"}), hide_index=True, use_container_width=True)
