@@ -162,7 +162,7 @@ if dados_finais:
         margin=dict(t=55, l=5, r=5, b=5), 
         height=500 
     )
-    st.plotly_chart(fig_mapa, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig_mapa, width='stretch', config={'displayModeBar': False})
     
     # 2. HISTÓRICO DE TENDÊNCIA AJUSTADO
     st.markdown("### 📊 Rastro dos Últimos 15 Dias")
