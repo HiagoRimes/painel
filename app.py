@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 
-# Configuração simples para mobile (sem o 'wide')
+# Configuração de interface limpa para mobile
 st.set_page_config(page_title="MACA-QUANTI", layout="centered")
 
 st.title("🍎 MACA-QUANTI")
@@ -17,6 +17,7 @@ macro_ativos = {
 ativos_dados = []
 series_z = {}
 
+# Processamento dos dados
 with st.spinner("Calculando..."):
     for cod, nome in macro_ativos.items():
         try:
@@ -29,26 +30,31 @@ with st.spinner("Calculando..."):
                 ativos_dados.append({"nome": nome, "z": z})
         except: continue
 
-# EXIBIÇÃO EM UMA COLUNA (Estável para Mobile)
-for item in ativos_dados:
-    # Usamos o st.metric dentro de um container para garantir o isolamento visual
-    with st.container():
-        st.metric(label=item['nome'], value=f"Z: {item['z']:.2f}")
-        st.divider() # Linha divisória simples para organizar
+# Grid em 2 colunas nativo (o sistema aceita 100% e não quebra no mobile)
+cols = st.columns(2)
+for i, item in enumerate(ativos_dados):
+    with cols[i % 2]:
+        # Lógica de cores nativa usando delta_color
+        # Z > 1.5 = VENDA (Vermelho), Z < -1.5 = COMPRA (Verde), Neutro = Branco
+        if item['z'] > 1.5:
+            st.metric(label=item['nome'], value=f"{item['z']:.2f}", delta="VENDA", delta_color="inverse")
+        elif item['z'] < -1.5:
+            st.metric(label=item['nome'], value=f"{item['z']:.2f}", delta="COMPRA", delta_color="normal")
+        else:
+            st.metric(label=item['nome'], value=f"{item['z']:.2f}", delta="NEUTRO", delta_color="off")
 
-# GRÁFICO (Configurado para largura do celular)
+# Gráfico otimizado
 st.subheader("📊 Rastro (15 dias)")
 fig = go.Figure()
 for nome, serie in series_z.items():
     fig.add_trace(go.Scatter(x=serie.index.strftime('%d/%m'), y=serie.values, mode='lines', name=nome))
 
-# Ajustes específicos para o gráfico não ficar gigante no celular
 fig.update_layout(
     height=300, 
-    margin=dict(l=20, r=20, t=20, b=20),
-    font_color="#fff", 
+    margin=dict(l=10, r=10, t=10, b=10),
     paper_bgcolor="rgba(0,0,0,0)", 
     plot_bgcolor="rgba(0,0,0,0)",
+    font_color="#fff",
     legend=dict(orientation="h", yanchor="top", y=-0.2)
 )
 st.plotly_chart(fig, use_container_width=True)
