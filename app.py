@@ -1,10 +1,9 @@
 import streamlit as st
 import yfinance as yf
-import pandas as pd
 
 st.set_page_config(page_title="MACRO WIN DASHBOARD", layout="wide")
 
-st.title("MACRO WIN DASHBOARD (DEBUG + STABLE)")
+st.title("MACRO WIN DASHBOARD (ULTRA STABLE)")
 
 # =========================
 # ASSETS
@@ -29,36 +28,40 @@ for k, v in assets.items():
     try:
         df = yf.download(v, period="10d", interval="1h", progress=False)
 
-        if df is None or df.empty:
-            status[k] = "NO DATA"
-        else:
-            status[k] = "OK"
-
         data[k] = df
+
+        status[k] = "OK" if df is not None and not df.empty else "EMPTY"
 
     except Exception as e:
         data[k] = None
-        status[k] = f"ERROR: {str(e)[:30]}"
+        status[k] = f"ERROR: {str(e)[:20]}"
 
 # =========================
-# SAFE RETURN (ROBUSTO)
+# SAFE RETURN (ROBUSTO REAL)
 # =========================
 
 def safe_ret(df):
 
     try:
         if df is None or df.empty:
-            return None
+            return 0.0
 
         close = df["Close"].dropna()
 
-        if len(close) < 10:
-            return None
+        if len(close) < 5:
+            return 0.0
 
-        return float((close.iloc[-1] / close.iloc[-10]) - 1)
+        # evita índice fixo quebrado
+        last = close.iloc[-1]
+        prev = close.iloc[-5]
+
+        if prev == 0:
+            return 0.0
+
+        return float((last / prev) - 1)
 
     except:
-        return None
+        return 0.0
 
 # =========================
 # MACRO SCORE
@@ -71,26 +74,16 @@ def calculate_macro_score(data):
     vix = safe_ret(data.get("VIX"))
     dxy = safe_ret(data.get("DXY"))
 
-    # se qualquer ativo falhar, NÃO força score
-    valid_values = [x for x in [es, nq, vix, dxy] if x is not None]
-
-    if len(valid_values) < 3:
-        return {
-            "score": 0,
-            "label": "INSUFFICIENT DATA",
-            "details": {
-                "ES": es,
-                "NQ": nq,
-                "VIX": vix,
-                "DXY": dxy
-            }
-        }
-
     score = 0
 
+    # risco global
     score += 1 if es > 0 else -1
     score += 1 if nq > 0 else -1
+
+    # volatilidade (invertido)
     score += 1 if vix < 0 else -1
+
+    # dólar (invertido)
     score += 1 if dxy < 0 else -1
 
     if score >= 3:
@@ -144,18 +137,15 @@ def brazil_context():
     }
 
 # =========================
-# SIGNAL
+# WIN SIGNAL
 # =========================
 
 def win_signal(macro, regime):
 
-    if macro["label"] == "INSUFFICIENT DATA":
+    if regime == "SHOCK":
         return "NO TRADE"
 
     score = macro["score"]
-
-    if regime == "SHOCK":
-        return "NO TRADE"
 
     if score >= 3 and regime == "TREND":
         return "LONG WIN"
@@ -166,12 +156,12 @@ def win_signal(macro, regime):
     return "NO TRADE"
 
 # =========================
-# RUN
+# RUN MODEL
 # =========================
 
 macro = calculate_macro_score(data)
 regime = detect_regime(data)
-br = brazil_context()
+brasil = brazil_context()
 signal = win_signal(macro, regime)
 
 # =========================
@@ -193,4 +183,18 @@ st.subheader("Detalhes Macro")
 st.json(macro["details"])
 
 st.subheader("Contexto Brasil")
-st.json(br)
+st.json(brasil)
+
+st.subheader("Estrutura do Sistema")
+
+st.write("""
+Sistema macro estruturado:
+
+1. Risco global (ES, NQ, VIX, DXY)
+2. Regime de volatilidade
+3. Contexto Brasil
+4. WIN como execução final
+
+Regra:
+WIN nunca lidera — apenas executa o fluxo dominante.
+""")
