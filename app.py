@@ -1,12 +1,13 @@
 import streamlit as st
 import yfinance as yf
+import pandas as pd
 
 st.set_page_config(page_title="MACRO WIN DASHBOARD", layout="wide")
 
-st.title("MACRO WIN DASHBOARD (STABLE VERSION)")
+st.title("MACRO WIN DASHBOARD (STABLE FIXED)")
 
 # =========================
-# ASSETS (mais estáveis)
+# ASSETS
 # =========================
 
 assets = {
@@ -31,15 +32,26 @@ for k, v in assets.items():
         data[k] = None
 
 # =========================
-# SAFE RETURN FUNCTION
+# SAFE RETURN (FIX DEFINITIVO)
 # =========================
 
 def safe_ret(df):
-    if df is None or df.empty or len(df) < 2:
-        return 0.0
-
     try:
-        return df["Close"].pct_change().dropna().iloc[-1]
+        if df is None or df.empty:
+            return 0.0
+
+        close = df["Close"]
+
+        # garante Series simples
+        if hasattr(close, "values"):
+            close = close.values
+
+        if len(close) < 2:
+            return 0.0
+
+        # retorno simples e seguro
+        return float((close[-1] / close[-2]) - 1)
+
     except:
         return 0.0
 
@@ -60,10 +72,10 @@ def calculate_macro_score(data):
     score += 1 if es > 0 else -1
     score += 1 if nq > 0 else -1
 
-    # Risk-off proxy
+    # Risk-off proxy (invertido)
     score += 1 if vix < 0 else -1
 
-    # Dollar effect
+    # Dollar effect (invertido)
     score += 1 if dxy < 0 else -1
 
     if score >= 3:
@@ -111,10 +123,10 @@ def detect_regime(data):
 def brazil_context():
 
     return {
-        "USD/BRL": "não integrado (pode adicionar API depois)",
+        "USD/BRL": "não integrado neste MVP",
         "DI Futuro": "proxy juros Brasil",
-        "IFNC": "bancos como leitura de risco local",
-        "Nota": "Brasil tende a seguir fluxo global na maior parte dos dias"
+        "IFNC": "bancos como risco local",
+        "Nota": "Brasil segue fluxo global na maior parte do tempo"
     }
 
 # =========================
@@ -163,16 +175,16 @@ st.json(macro["details"])
 st.subheader("Contexto Brasil")
 st.json(brasil)
 
-st.subheader("Estrutura do Modelo")
+st.subheader("Estrutura do Sistema")
 
 st.write("""
-Este sistema é um filtro macro estruturado:
+Sistema macro estruturado:
 
 1. Risco global (ES, NQ, VIX, DXY)
 2. Regime de volatilidade
 3. Contexto Brasil
 4. WIN como execução final
 
-Regra central:
-WIN nunca lidera o sistema — ele executa o fluxo dominante.
+Regra:
+WIN nunca lidera — apenas executa o fluxo dominante.
 """)
