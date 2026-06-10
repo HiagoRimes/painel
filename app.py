@@ -1,162 +1,169 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
-from datetime import datetime
 
-st.set_page_config(page_title="MACA-QUANTI CORE", layout="wide")
-st.title("🏛️ MACA-QUANTI | Correlação Estrutural Estável")
+st.set_page_config(page_title="MACRO WIN DASHBOARD", layout="wide")
+
+st.title("MACRO WIN DASHBOARD (ALL-IN-ONE)")
 
 # =========================
-# UNIVERSO
+# ASSETS
 # =========================
-ativos = {
-    "SP500": {"ticker": "SPY", "corr": 1},
-    "NASDAQ": {"ticker": "QQQ", "corr": 1},
-    "BRASIL": {"ticker": "EWZ", "corr": 1},
-    "FINANCEIRO": {"ticker": "XLF", "corr": 1},
-    "TECNOLOGIA": {"ticker": "XLK", "corr": 1},
-    "MATERIAIS": {"ticker": "XLB", "corr": 1},
-    "JUROS": {"ticker": "TLT", "corr": -1},
+
+assets = {
+    "ES": "^GSPC",
+    "NQ": "^IXIC",
+    "VIX": "^VIX",
+    "DXY": "DX-Y.NYB",
+    "US10Y": "^TNX"
 }
 
 # =========================
-# DADOS ESTÁVEIS (SEM INTRADAY FRÁGIL)
+# DATA LOAD
 # =========================
-@st.cache_data(ttl=300)
-def load(ticker):
+
+data = {}
+
+for k, v in assets.items():
+    try:
+        df = yf.download(v, period="5d", interval="1h", progress=False)
+        data[k] = df
+    except:
+        data[k] = None
+
+# =========================
+# MACRO SCORE
+# =========================
+
+def calculate_macro_score(data):
+
+    score = 0
 
     try:
-        # base mais confiável do Yahoo
-        df = yf.download(
-            ticker,
-            period="20d",
-            interval="1h",
-            progress=False,
-            threads=False
-        )
+        es = data["ES"]["Close"].pct_change().iloc[-1]
+        nq = data["NQ"]["Close"].pct_change().iloc[-1]
+        vix = data["VIX"]["Close"].pct_change().iloc[-1]
+        dxy = data["DXY"]["Close"].pct_change().iloc[-1]
 
-        if df is None or df.empty or "Close" not in df:
-            return None
+        score += 1 if es > 0 else -1
+        score += 1 if nq > 0 else -1
+        score += 1 if vix < 0 else -1
+        score += 1 if dxy < 0 else -1
 
-        close = pd.to_numeric(df["Close"], errors="coerce").dropna()
+        if score >= 3:
+            label = "RISK-ON FORTE"
+        elif score == 2:
+            label = "RISK-ON"
+        elif score in [1, 0]:
+            label = "NEUTRO"
+        else:
+            label = "RISK-OFF"
 
-        if len(close) < 20:
-            return None
-
-        return close
+        return {
+            "score": score,
+            "label": label,
+            "details": {
+                "ES": float(es),
+                "NQ": float(nq),
+                "VIX": float(vix),
+                "DXY": float(dxy)
+            }
+        }
 
     except:
-        return None
+        return {
+            "score": 0,
+            "label": "SEM DADOS",
+            "details": {}
+        }
 
 # =========================
-# FORÇA ESTRUTURAL (SEM RUÍDO)
+# REGIME
 # =========================
-def force(series):
+
+def detect_regime(data):
 
     try:
-        # tendência curta (intraday leve)
-        r1 = (series.iloc[-1] / series.iloc[-2]) - 1
+        vix = data["VIX"]["Close"].iloc[-1]
 
-        # tendência média
-        r5 = (series.iloc[-1] / series.iloc[-6]) - 1
-
-        # tendência estrutural
-        r20 = (series.iloc[-1] / series.iloc[-20]) - 1
-
-        retorno = (0.4 * r1 + 0.3 * r5 + 0.3 * r20)
-
-        vol = series.pct_change().rolling(20).std().iloc[-1]
-        vol = float(vol) if pd.notna(vol) and vol > 1e-6 else 0.001
-
-        return float(retorno / vol)
+        if vix > 20:
+            return "SHOCK"
+        elif vix > 15:
+            return "CHOP"
+        else:
+            return "TREND"
 
     except:
-        return 0.0
+        return "UNKNOWN"
 
 # =========================
-# PROCESSAMENTO
+# BRASIL CONTEXT
 # =========================
-rows = []
 
-for name, cfg in ativos.items():
+def brazil_context():
 
-    s = load(cfg["ticker"])
-    if s is None:
-        continue
-
-    f = force(s)
-
-    try:
-        direction = np.sign(float(s.iloc[-1]) - float(s.iloc[-2]))
-    except:
-        direction = 0
-
-    impact = f * cfg["corr"] * direction * 100
-
-    rows.append({
-        "Ativo": name,
-        "Força": float(impact)
-    })
-
-df = pd.DataFrame(rows)
-
-if df.empty:
-    st.error("Sem dados Yahoo disponíveis (instabilidade temporária)")
-    st.stop()
-
-df["Força"] = pd.to_numeric(df["Força"], errors="coerce").fillna(0.0)
+    return {
+        "USD/BRL": "não integrado neste MVP",
+        "DI Futuro": "proxy juros Brasil",
+        "IFNC": "bancos como risco local",
+        "Nota": "Brasil segue fluxo global na maior parte do tempo"
+    }
 
 # =========================
-# LÍDER
+# WIN SIGNAL
 # =========================
-df = df.sort_values("Força", ascending=False)
 
-leader = df.iloc[0]["Ativo"]
-leader_val = df.iloc[0]["Força"]
+def win_signal(macro, regime):
 
-# =========================
-# REGIME DE MERCADO
-# =========================
-buy = df[df["Força"] > 0]["Força"].sum()
-sell = abs(df[df["Força"] < 0]["Força"].sum())
+    score = macro["score"]
 
-total = buy + sell + 1e-9
+    if regime == "SHOCK":
+        return "NO TRADE"
 
-pct_buy = buy / total
-pct_sell = sell / total
+    if score >= 3 and regime == "TREND":
+        return "LONG WIN"
 
-if pct_buy > 0.6:
-    regime = "🟢 RISK ON (COMPRA DOMINANTE)"
-elif pct_sell > 0.6:
-    regime = "🔴 RISK OFF (VENDA DOMINANTE)"
-else:
-    regime = "🟡 NEUTRO / COMPRESSÃO"
+    if score <= -2 and regime == "TREND":
+        return "SHORT WIN"
+
+    return "NO TRADE"
 
 # =========================
-# ALERTA DE DOMINÂNCIA
+# RUN MODEL
 # =========================
-if abs(leader_val) > 2:
-    alert = "🚨 FORÇA EXTREMA NO LÍDER"
-else:
-    alert = "OK"
+
+macro = calculate_macro_score(data)
+regime = detect_regime(data)
+brasil = brazil_context()
+signal = win_signal(macro, regime)
 
 # =========================
 # UI
 # =========================
-c1, c2, c3 = st.columns(3)
 
-c1.metric("Regime", regime)
-c2.metric("Líder", leader)
-c3.metric("Alerta", alert)
+col1, col2, col3 = st.columns(3)
 
-st.divider()
-
-st.write(f"🟢 Compra: {pct_buy:.2%}")
-st.write(f"🔴 Venda: {pct_sell:.2%}")
+col1.metric("Macro Score", macro["score"], macro["label"])
+col2.metric("Regime", regime)
+col3.metric("WIN Signal", signal)
 
 st.divider()
 
-st.dataframe(df, use_container_width=True)
+st.subheader("Detalhes Macro")
+st.json(macro["details"])
 
-st.caption("MACA-QUANTI | correlação estrutural estável (1h + 20d)")
+st.subheader("Contexto Brasil")
+st.json(brasil)
+
+st.subheader("Estrutura do Modelo")
+st.write("""
+Este sistema funciona como um filtro macro:
+
+1. Risco global (ES, NQ, VIX, DXY)
+2. Regime de volatilidade
+3. Contexto Brasil (proxy)
+4. WIN como execução final
+
+Regra central:
+WIN nunca lidera o sistema. Ele apenas executa o fluxo dominante.
+""")
