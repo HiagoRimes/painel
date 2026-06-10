@@ -1,10 +1,10 @@
 import streamlit as st
 import yfinance as yf
-import pandas as pd
+import numpy as np
 
 st.set_page_config(page_title="MACRO WIN DASHBOARD", layout="wide")
 
-st.title("MACRO WIN DASHBOARD (CLEAN VERSION)")
+st.title("MACRO WIN DASHBOARD (WORKING VERSION)")
 
 # =========================
 # ASSETS
@@ -28,16 +28,14 @@ status = {}
 for k, v in assets.items():
     try:
         df = yf.download(v, period="10d", interval="1h", progress=False)
-
         data[k] = df
         status[k] = "OK" if df is not None and not df.empty else "EMPTY"
-
-    except Exception as e:
+    except:
         data[k] = None
-        status[k] = f"ERROR"
+        status[k] = "ERROR"
 
 # =========================
-# SAFE RETURN (CORRIGIDO)
+# SAFE RETURN (ROBUSTO)
 # =========================
 
 def safe_ret(df):
@@ -47,17 +45,22 @@ def safe_ret(df):
 
         close = df["Close"].dropna()
 
-        if len(close) < 5:
+        if len(close) < 10:
             return 0.0
 
-        # retorno percentual simples e estável
-        return float((close.iloc[-1] / close.iloc[-5]) - 1)
+        last = close.iloc[-1]
+        prev = close.iloc[-10]
+
+        if prev == 0:
+            return 0.0
+
+        return float(np.log(last / prev))
 
     except:
         return 0.0
 
 # =========================
-# MACRO SCORE (SIMPLIFICADO E ESTÁVEL)
+# MACRO SCORE (ESTÁVEL)
 # =========================
 
 def calculate_macro_score(data):
@@ -67,29 +70,27 @@ def calculate_macro_score(data):
     vix = safe_ret(data.get("VIX"))
     dxy = safe_ret(data.get("DXY"))
 
-    score = 0
+    score = 0.0
 
     # risco global
-    score += 1 if es > 0 else -1
-    score += 1 if nq > 0 else -1
+    score += es
+    score += nq
 
-    # volatilidade (invertido)
-    score += 1 if vix < 0 else -1
+    # risco-off (invertido)
+    score -= vix
 
     # dólar (invertido)
-    score += 1 if dxy < 0 else -1
+    score -= dxy
 
-    if score >= 3:
-        label = "RISK-ON FORTE"
-    elif score == 2:
+    if score > 0.01:
         label = "RISK-ON"
-    elif score in [1, 0]:
-        label = "NEUTRO"
-    else:
+    elif score < -0.01:
         label = "RISK-OFF"
+    else:
+        label = "NEUTRO"
 
     return {
-        "score": score,
+        "score": round(score, 4),
         "label": label,
         "details": {
             "ES": es,
@@ -118,7 +119,7 @@ def detect_regime(data):
         return "UNKNOWN"
 
 # =========================
-# BRASIL CONTEXT
+# BRASIL
 # =========================
 
 def brazil_context():
@@ -140,10 +141,10 @@ def win_signal(macro, regime):
 
     score = macro["score"]
 
-    if score >= 3 and regime == "TREND":
+    if score > 0.02 and regime == "TREND":
         return "LONG WIN"
 
-    if score <= -2 and regime == "TREND":
+    if score < -0.02 and regime == "TREND":
         return "SHORT WIN"
 
     return "NO TRADE"
@@ -177,17 +178,3 @@ st.json(macro["details"])
 
 st.subheader("Contexto Brasil")
 st.json(brasil)
-
-st.subheader("Estrutura do Sistema")
-
-st.write("""
-Modelo macro simples:
-
-- ES / NQ → direção de risco
-- VIX → stress (inverso)
-- DXY → pressão global (inverso)
-- WIN → execução final
-
-Regra:
-WIN não gera sinal, apenas executa o contexto.
-""")
