@@ -4,7 +4,7 @@ import numpy as np
 
 st.set_page_config(page_title="MACRO WIN DASHBOARD", layout="wide")
 
-st.title("MACRO WIN DASHBOARD (WORKING VERSION)")
+st.title("MACRO WIN DASHBOARD (CONSOLIDATED)")
 
 # =========================
 # ASSETS
@@ -27,7 +27,7 @@ status = {}
 
 for k, v in assets.items():
     try:
-        df = yf.download(v, period="10d", interval="1h", progress=False)
+        df = yf.download(v, period="15d", interval="1h", progress=False)
         data[k] = df
         status[k] = "OK" if df is not None and not df.empty else "EMPTY"
     except:
@@ -35,10 +35,10 @@ for k, v in assets.items():
         status[k] = "ERROR"
 
 # =========================
-# SAFE RETURN (ROBUSTO)
+# SIGNAL EXTRACTION (SEM COLAPSO EM ZERO)
 # =========================
 
-def safe_ret(df):
+def extract_signal(df):
     try:
         if df is None or df.empty:
             return 0.0
@@ -48,13 +48,15 @@ def safe_ret(df):
         if len(close) < 10:
             return 0.0
 
-        last = close.iloc[-1]
-        prev = close.iloc[-10]
+        # normalização por volatilidade simples (evita zero artificial)
+        recent = close.iloc[-10:]
+        mean = recent.mean()
+        std = recent.std()
 
-        if prev == 0:
+        if std == 0:
             return 0.0
 
-        return float(np.log(last / prev))
+        return float((close.iloc[-1] - mean) / std)
 
     except:
         return 0.0
@@ -65,32 +67,24 @@ def safe_ret(df):
 
 def calculate_macro_score(data):
 
-    es = safe_ret(data.get("ES"))
-    nq = safe_ret(data.get("NQ"))
-    vix = safe_ret(data.get("VIX"))
-    dxy = safe_ret(data.get("DXY"))
+    es = extract_signal(data.get("ES"))
+    nq = extract_signal(data.get("NQ"))
+    vix = extract_signal(data.get("VIX"))
+    dxy = extract_signal(data.get("DXY"))
 
-    score = 0.0
+    # composição macro (sem binário)
+    score = es + nq - vix - dxy
 
-    # risco global
-    score += es
-    score += nq
-
-    # risco-off (invertido)
-    score -= vix
-
-    # dólar (invertido)
-    score -= dxy
-
-    if score > 0.01:
+    # classificação suave (evita travar em zero)
+    if score > 0.5:
         label = "RISK-ON"
-    elif score < -0.01:
+    elif score < -0.5:
         label = "RISK-OFF"
     else:
         label = "NEUTRO"
 
     return {
-        "score": round(score, 4),
+        "score": round(score, 3),
         "label": label,
         "details": {
             "ES": es,
@@ -105,7 +99,6 @@ def calculate_macro_score(data):
 # =========================
 
 def detect_regime(data):
-
     try:
         vix = data["VIX"]["Close"].iloc[-1]
 
@@ -119,18 +112,6 @@ def detect_regime(data):
         return "UNKNOWN"
 
 # =========================
-# BRASIL
-# =========================
-
-def brazil_context():
-    return {
-        "USD/BRL": "não integrado",
-        "DI Futuro": "proxy juros Brasil",
-        "IFNC": "bancos como risco local",
-        "Nota": "Brasil segue fluxo global na maior parte do tempo"
-    }
-
-# =========================
 # WIN SIGNAL
 # =========================
 
@@ -141,13 +122,25 @@ def win_signal(macro, regime):
 
     score = macro["score"]
 
-    if score > 0.02 and regime == "TREND":
+    if score > 1:
         return "LONG WIN"
 
-    if score < -0.02 and regime == "TREND":
+    if score < -1:
         return "SHORT WIN"
 
     return "NO TRADE"
+
+# =========================
+# BRASIL
+# =========================
+
+def brazil_context():
+    return {
+        "USD/BRL": "não integrado",
+        "DI Futuro": "proxy juros Brasil",
+        "IFNC": "bancos como leitura local",
+        "Nota": "Brasil segue fluxo global na maior parte do tempo"
+    }
 
 # =========================
 # RUN
@@ -178,3 +171,17 @@ st.json(macro["details"])
 
 st.subheader("Contexto Brasil")
 st.json(brasil)
+
+st.subheader("Estrutura do Sistema")
+
+st.write("""
+Modelo consolidado:
+
+- ES / NQ → força de risco
+- VIX → stress de mercado (inverso)
+- DXY → pressão global (inverso)
+- Score normalizado por volatilidade local
+
+Regra:
+WIN apenas executa o contexto macro.
+""")
