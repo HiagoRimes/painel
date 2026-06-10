@@ -1,9 +1,10 @@
 import streamlit as st
 import yfinance as yf
+import pandas as pd
 
 st.set_page_config(page_title="MACRO WIN DASHBOARD", layout="wide")
 
-st.title("MACRO WIN DASHBOARD (ULTRA STABLE)")
+st.title("MACRO WIN DASHBOARD (CLEAN VERSION)")
 
 # =========================
 # ASSETS
@@ -29,19 +30,17 @@ for k, v in assets.items():
         df = yf.download(v, period="10d", interval="1h", progress=False)
 
         data[k] = df
-
         status[k] = "OK" if df is not None and not df.empty else "EMPTY"
 
     except Exception as e:
         data[k] = None
-        status[k] = f"ERROR: {str(e)[:20]}"
+        status[k] = f"ERROR"
 
 # =========================
-# SAFE RETURN (ROBUSTO REAL)
+# SAFE RETURN (CORRIGIDO)
 # =========================
 
 def safe_ret(df):
-
     try:
         if df is None or df.empty:
             return 0.0
@@ -51,20 +50,14 @@ def safe_ret(df):
         if len(close) < 5:
             return 0.0
 
-        # evita índice fixo quebrado
-        last = close.iloc[-1]
-        prev = close.iloc[-5]
-
-        if prev == 0:
-            return 0.0
-
-        return float((last / prev) - 1)
+        # retorno percentual simples e estável
+        return float((close.iloc[-1] / close.iloc[-5]) - 1)
 
     except:
         return 0.0
 
 # =========================
-# MACRO SCORE
+# MACRO SCORE (SIMPLIFICADO E ESTÁVEL)
 # =========================
 
 def calculate_macro_score(data):
@@ -125,7 +118,7 @@ def detect_regime(data):
         return "UNKNOWN"
 
 # =========================
-# BRASIL
+# BRASIL CONTEXT
 # =========================
 
 def brazil_context():
@@ -156,7 +149,7 @@ def win_signal(macro, regime):
     return "NO TRADE"
 
 # =========================
-# RUN MODEL
+# RUN
 # =========================
 
 macro = calculate_macro_score(data)
@@ -188,13 +181,13 @@ st.json(brasil)
 st.subheader("Estrutura do Sistema")
 
 st.write("""
-Sistema macro estruturado:
+Modelo macro simples:
 
-1. Risco global (ES, NQ, VIX, DXY)
-2. Regime de volatilidade
-3. Contexto Brasil
-4. WIN como execução final
+- ES / NQ → direção de risco
+- VIX → stress (inverso)
+- DXY → pressão global (inverso)
+- WIN → execução final
 
 Regra:
-WIN nunca lidera — apenas executa o fluxo dominante.
+WIN não gera sinal, apenas executa o contexto.
 """)
