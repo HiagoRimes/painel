@@ -1,17 +1,18 @@
 import streamlit as st
-from google import genai
+import google.generativeai as genai
 from PIL import Image
 
 # Configuração da página
 st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
 
-# Configuração da NOVA SDK do Google (google.genai)
+# Configuração da API 
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
-    client = genai.Client(api_key=api_key)
-    # --- ALTERAÇÃO IMPORTANTE: Usando o modelo mais moderno da sua lista ---
+    genai.configure(api_key=api_key)
+    
+    # Usando o modelo moderno da sua lista que sabemos que funciona
     model_name = 'gemini-3.5-flash' 
-    # ----------------------------------------------------------------------
+    model = genai.GenerativeModel(model_name)
 except Exception as e:
     st.error("Configuração de API pendente nas Secrets do Streamlit Cloud.")
     st.stop()
@@ -34,28 +35,19 @@ uploaded_file = st.file_uploader("Suba o print do TradingView...", type=["jpg", 
 
 if uploaded_file:
     img = Image.open(uploaded_file)
-    
-    # Formatação de imagem moderna corrigida conforme os logs
     st.image(img, width='stretch')
     
     if st.button("Executar Protocolo de Leitura"):
-        with st.spinner(f"Analisando fluxo com o modelo ultra-rápido {model_name}..."):
+        with st.spinner(f"Analisando fluxo com o modelo {model_name}..."):
             try:
-                # Prompt combinado
+                # Prompt combinado para o formato da biblioteca antiga
                 prompt = f"{PROTOCOL_FINAL}\n\nAnalise a imagem acima seguindo rigorosamente este protocolo."
                 
-                # Chamada com a sintaxe exigida pela SDK google.genai
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[img, prompt]
-                )
+                # Resposta enviando os parâmetros na ordem aceita pela biblioteca
+                response = model.generate_content([prompt, img])
                 
                 st.markdown("---")
-                # Se o modelo 3.5 gerar uma resposta formatada, o markdown renderiza.
                 st.markdown(response.text)
                 
             except Exception as e:
                 st.error(f"Erro na análise: {e}")
-
-st.sidebar.markdown("---")
-st.sidebar.info(f"Sistema rodando no novo SDK oficial e usando o modelo futurista {model_name}.")
