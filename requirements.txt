@@ -1,4 +1,3 @@
 streamlit
-yfinance
-google-genai
-pandas
+google-generativeai
+pillow
