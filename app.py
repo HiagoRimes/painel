@@ -1,15 +1,15 @@
 import streamlit as st
 import google.generativeai as genai
-from PIL import Image
+import requests # Biblioteca padrão para fazer chamadas de API
 
 # Configuração da página
 st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
 
-# Inicializa a "Memória Intraday" do aplicativo
+# Inicializa a memória
 if 'historico_analises' not in st.session_state:
     st.session_state.historico_analises = []
 
-# Configuração da API
+# Configuração do Gemini
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
@@ -19,68 +19,89 @@ except Exception as e:
     st.error("Configuração de API pendente nas Secrets.")
     st.stop()
 
-# Seu Protocolo Base
+# Seu Protocolo Base adaptado para leitura de dados em texto
 PROTOCOL_FINAL = """
-Você é um mentor de trading institucional de alta performance. Seu papel é analisar prints do TradingView do ativo WIN e ensinar o aluno a pensar como um profissional. Siga rigorosamente este protocolo:
+Você é um mentor de trading institucional de alta performance focado no ativo WIN.
+Vou te passar os DADOS DA MINHA CARTEIRA e os INDICADORES ATUAIS. Siga rigorosamente este protocolo:
 
-1. CONTEXTO DO DIA: Eventos e notícias.
-2. ESTADO DOS MOTORES: Macro (DI/WDO), Externo (S&P/Nasdaq/VIX), Interno (IFNC/IMAT).
-3. CARTEIRA: Análise dos ativos correlacionados.
-4. TRANSMISSÃO DE FLUXO: Mecanismo dominante.
-5. ESTADO FINAL DO MERCADO: Direção provável e decisão operacional.
-6. MODO PROFESSOR: Erro típico, padrão de aprendizado e regra prática.
+1. CONTEXTO DA CARTEIRA: Analise a posição atual, saldo e exposição.
+2. ESTADO DOS MOTORES: Macro, Externo e Interno (com base nos dados fornecidos).
+3. TRANSMISSÃO DE FLUXO: Mecanismo dominante.
+4. ESTADO FINAL DO MERCADO: Direção provável e decisão operacional.
+5. MODO PROFESSOR: Erro típico, padrão de aprendizado e regra prática.
 """
 
-st.title("🎓 Mentor de Fluxo WIN")
+st.title("🎓 Mentor de Fluxo WIN (Modo Dados)")
 
-# Botão na barra lateral para limpar a memória ao iniciar um novo dia
-st.sidebar.markdown("### 🧠 Gestão de Memória")
-if st.sidebar.button("🗑️ Limpar Memória (Novo Dia de Pregão)"):
-    st.session_state.historico_analises = []
-    st.sidebar.success("Memória zerada! O Mentor está pronto para um novo dia.")
+# --- ÁREA DE NOTÍCIAS MANUAIS ---
+st.markdown("### 📰 Contexto Macroeconômico do Dia")
+noticias_do_dia = st.text_area(
+    "Insira a agenda e notícias relevantes (Ex: 09:30 - Payroll):", 
+    height=68
+)
+st.markdown("---")
 
-uploaded_file = st.file_uploader("Suba o print do TradingView...", type=["jpg", "png", "jpeg"])
+# --- ÁREA DA API DA CARTEIRA ---
+st.markdown("### 💼 Sincronização de Carteira")
 
-if uploaded_file:
-    img = Image.open(uploaded_file)
-    st.image(img, width='stretch')
-    
-    if st.button("Executar Protocolo de Leitura"):
-        with st.spinner(f"Analisando fluxo e consultando memória..."):
+# Função simulada onde a sua API real vai entrar
+def puxar_dados_api():
+    # Aqui vai entrar o código real da sua corretora/plataforma
+    # Por enquanto, retorna um dado simulado para você testar a mecânica
+    return """
+    Ativo: WINQ26
+    Posição: Comprado em 5 minicontratos
+    Preço Médio: 125.400
+    Resultado Aberto: + R$ 150,00
+    IFNC: +0.45% | DI1F27: -0.12% | WDO: -0.20%
+    """
+
+if st.button("🔄 Puxar Dados e Analisar"):
+    if not noticias_do_dia.strip():
+        st.warning("⚠️ Preencha o Contexto Macroeconômico antes de analisar.")
+    else:
+        with st.spinner("Sincronizando com a API e analisando fluxo..."):
             try:
-                # 1. Verifica se já existem análises anteriores hoje para criar o contexto
+                # 1. Puxa os dados da API
+                dados_atuais = puxar_dados_api()
+                
+                # 2. Mostra os dados crus na tela para conferência
+                st.info(f"**Dados capturados:**\n{dados_atuais}")
+
+                # 3. Monta o contexto com o histórico
                 contexto_intraday = ""
                 if len(st.session_state.historico_analises) > 0:
-                    contexto_intraday = "HISTÓRICO DAS SUAS ANÁLISES ANTERIORES HOJE:\n"
-                    # Pega apenas as últimas 3 análises para não sobrecarregar o texto
-                    ultimas_analises = st.session_state.historico_analises[-3:]
-                    for i, analise in enumerate(ultimas_analises):
+                    contexto_intraday = "HISTÓRICO DAS ANÁLISES HOJE:\n"
+                    for i, analise in enumerate(st.session_state.historico_analises[-3:]):
                         contexto_intraday += f"--- Leitura Anterior {i+1} ---\n{analise}\n\n"
-                    
-                    contexto_intraday += "INSTRUÇÃO ADICIONAL: Com base no histórico acima e na nova imagem, aponte o desenrolar do mercado. A sua tese anterior se confirmou? O fluxo mudou? O que o mercado está provando agora?\n\n"
+                    contexto_intraday += "INSTRUÇÃO: Com base nas leituras anteriores e nos NOVOS DADOS DA CARTEIRA abaixo, atualize a tese. O fluxo mudou?\n\n"
 
-                # 2. Junta o Protocolo + Memória + Imagem Nova
-                prompt_completo = f"{PROTOCOL_FINAL}\n\n{contexto_intraday}Analise a imagem atual seguindo o protocolo e atualizando a leitura."
+                # 4. Junta tudo no prompt (Notícias + Protocolo + Histórico + Dados da API)
+                prompt_completo = f"NOTÍCIAS HOJE:\n{noticias_do_dia}\n\n{PROTOCOL_FINAL}\n\n{contexto_intraday}\n\nDADOS REAIS DA API AGORA:\n{dados_atuais}"
                 
-                # 3. Chama a IA
-                response = model.generate_content([prompt_completo, img])
+                # 5. Chama o Gemini apenas com texto (sem imagem)
+                response = model.generate_content(prompt_completo)
                 
-                # 4. Salva a nova resposta na memória do aplicativo
+                # 6. Salva e exibe
                 st.session_state.historico_analises.append(response.text)
                 
-                # 5. Exibe o resultado
-                st.markdown("---")
-                st.markdown("### 📊 Análise Atualizada")
+                st.markdown("### 📊 Análise Institucional Atualizada")
                 st.markdown(response.text)
                 
             except Exception as e:
-                st.error(f"Erro na análise: {e}")
+                st.error(f"Erro na conexão/análise: {e}")
 
-# Exibe um menu sanfona com as análises anteriores do dia
+# Gestão de Memória
+st.sidebar.markdown("### 🧠 Gestão de Memória")
+if st.sidebar.button("🗑️ Limpar Memória (Novo Dia)"):
+    st.session_state.historico_analises = []
+    st.sidebar.success("Memória zerada!")
+
 if len(st.session_state.historico_analises) > 0:
-    st.markdown("---")
-    with st.expander("📜 Ver Leituras Anteriores do Dia"):
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("📜 Ver Leituras Anteriores"):
         for i, analise in enumerate(st.session_state.historico_analises):
             st.markdown(f"**Análise {i+1}**")
             st.markdown(analise)
             st.markdown("---")
+            
