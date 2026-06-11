@@ -144,13 +144,12 @@ REGRA MESTRA ABSOLUTA: Trate sempre o WIN como consequência dos drivers institu
 """
 
 # ==============================================================================
-# MOTOR DE CAPTURA DE DADOS (YAHOO FINANCE + NEWS)
+# MOTOR DE CAPTURA DE DADOS (USANDO ETFs PARA ESTABILIDADE)
 # ==============================================================================
 def engine_coleta_dados():
-    # Siglas mapeadas com proxies de alta liquidez para garantir estabilidade
-    # Alteração para ^IBOV no WIN
+    # Substituído índices instáveis por ETFs de alta liquidez para garantir dados 100% do tempo
     ativos = {
-        "WIN (Ibov Cheio)": "^IBOV",
+        "WIN (Ibov via BOVA11)": "BOVA11.SA",
         "WDO (Dólar Comercial)": "BRL=X",
         "PETR4": "PETR4.SA",
         "B3SA3": "B3SA3.SA",
@@ -158,7 +157,7 @@ def engine_coleta_dados():
         "VALE3 (Proxy IMAT)": "VALE3.SA",
         "EWZ (ETF Brasil em NY)": "EWZ",
         "S&P 500 Futuro": "^GSPC",
-        "NASDAQ Futuro": "^IXIC",
+        "NASDAQ (via QQQ)": "QQQ",
         "VIX (Índice do Medo)": "^VIX"
     }
     
@@ -169,7 +168,7 @@ def engine_coleta_dados():
     for nome, ticker in ativos.items():
         try:
             ticker_obj = yf.Ticker(ticker)
-            # Histórico de 5 dias para garantir robustez no cálculo
+            # Histórico de 5 dias para garantir robustez técnica
             df = ticker_obj.history(period="5d")
             
             # Verificação de segurança rigorosa
@@ -182,7 +181,7 @@ def engine_coleta_dados():
                 resumo_sidebar[nome] = f"{var_percentual:+.2f}%"
                 
                 # Coleta notícias apenas para os índices principais
-                if ticker in ["^IBOV", "^GSPC"] and not bloco_noticias:
+                if ticker in ["BOVA11.SA", "^GSPC"] and not bloco_noticias:
                     noticias_lista = ticker_obj.news
                     if noticias_lista:
                         bloco_noticias = "\n📰 FEED DE MANCHETES INSTITUCIONAIS RECENTES:\n"
@@ -207,7 +206,7 @@ st.sidebar.caption(f"Último Scan: {datetime.now().strftime('%H:%M:%S')}")
 # Dispara a função de coleta de dados
 grade_dados, mini_dashboard, noticias = engine_coleta_dados()
 
-# Renderiza painel rápido de cotações na lateral
+# Renderiza painel rápido de cotações na lateral do Streamlit
 for ativo, var in mini_dashboard.items():
     if "+" in var:
         st.sidebar.markdown(f"🟩 **{ativo}**: `{var}`")
@@ -216,7 +215,7 @@ for ativo, var in mini_dashboard.items():
     else:
         st.sidebar.markdown(f"⬜ **{ativo}**: `{var}`")
 
-# Botão manual de emergência
+# Botão manual de emergência para a Mesa de Operações
 if st.sidebar.button("🔄 Forçar Recalibragem de Grade (Clique Manual)"):
     st.rerun()
 
@@ -233,20 +232,26 @@ REGRA DE SEGURANÇA: Se algum ativo estiver como 'N/A' ou 'Erro', NÃO invente v
 Trate o WIN estritamente como consequência estrutural dos motores.
 """
 
-# Execução do Modelo Gemini 2.5 Flash
+# Execução com lógica de Retry (segurança contra Erro 503)
 with st.spinner("🤖 Executando Modelo de Inteligência Institucional..."):
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=input_api_completo
-        )
-        
-        # Exibe o relatório final formatado
-        st.success("✅ Relatório de Cenário Atualizado com Êxito!")
-        st.markdown(response.text)
-        
-    except Exception as err:
-        st.error(f"Falha de processamento na API da IA: {err}")
+    tentativas = 0
+    sucesso = False
+    while tentativas < 3 and not sucesso:
+        try:
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=input_api_completo
+            )
+            st.success("✅ Relatório de Cenário Atualizado com Êxito!")
+            st.markdown(response.text)
+            sucesso = True
+        except Exception as err:
+            tentativas += 1
+            if tentativas < 3:
+                st.warning(f"⚠️ Instabilidade na API (Tentativa {tentativas}/3). Aguardando 10 segundos...")
+                time.sleep(10)
+            else:
+                st.error(f"❌ Falha crítica no processamento após 3 tentativas: {err}")
 
 # ==============================================================================
 # SINCRO DE CANDLE M15 (TEMPORIZADOR AUTOMÁTICO)
