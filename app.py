@@ -144,10 +144,10 @@ REGRA MESTRA ABSOLUTA: Trate sempre o WIN como consequência dos drivers institu
 """
 
 # ==============================================================================
-# MOTOR DE CAPTURA DE DADOS (USANDO ETFs PARA ESTABILIDADE)
+# MOTOR DE CAPTURA DE DADOS (USANDO ETFs PARA ESTABILIDADE TOTAL)
 # ==============================================================================
 def engine_coleta_dados():
-    # Substituído índices instáveis por ETFs de alta liquidez para garantir dados 100% do tempo
+    # Substituímos índices problemáticos por ETFs de alta liquidez real
     ativos = {
         "WIN (Ibov via BOVA11)": "BOVA11.SA",
         "WDO (Dólar Comercial)": "BRL=X",
@@ -155,7 +155,7 @@ def engine_coleta_dados():
         "B3SA3": "B3SA3.SA",
         "ITUB4 (Proxy IFNC)": "ITUB4.SA",
         "VALE3 (Proxy IMAT)": "VALE3.SA",
-        "EWZ (ETF Brasil em NY)": "EWZ",
+        "EWZ (ETF Brasil)": "EWZ",
         "S&P 500 Futuro": "^GSPC",
         "NASDAQ (via QQQ)": "QQQ",
         "VIX (Índice do Medo)": "^VIX"
@@ -168,10 +168,9 @@ def engine_coleta_dados():
     for nome, ticker in ativos.items():
         try:
             ticker_obj = yf.Ticker(ticker)
-            # Histórico de 5 dias para garantir robustez técnica
+            # Histórico de 5 dias para garantir robustez no cálculo de variação
             df = ticker_obj.history(period="5d")
             
-            # Verificação de segurança rigorosa
             if not df.empty and len(df) >= 2:
                 fechamento_anterior = df['Close'].iloc[-2]
                 preco_atual = df['Close'].iloc[-1]
@@ -180,7 +179,7 @@ def engine_coleta_dados():
                 grade_texto += f"- {nome}: Variação Atual de {var_percentual:+.2f}% | Último Preço: {preco_atual:,.2f}\n"
                 resumo_sidebar[nome] = f"{var_percentual:+.2f}%"
                 
-                # Coleta notícias apenas para os índices principais
+                # Coleta de notícias
                 if ticker in ["BOVA11.SA", "^GSPC"] and not bloco_noticias:
                     noticias_lista = ticker_obj.news
                     if noticias_lista:
@@ -188,7 +187,7 @@ def engine_coleta_dados():
                         for n in noticias_lista[:4]:
                             bloco_noticias += f"• {n['title']} (Fonte: {n.get('publisher', 'Mesa')})\n"
             else:
-                grade_texto += f"- {nome}: Dados de oscilação indisponíveis no momento.\n"
+                grade_texto += f"- {nome}: Dados indisponíveis no momento.\n"
                 resumo_sidebar[nome] = "N/A"
         except Exception:
             grade_texto += f"- {nome}: Erro de comunicação com a API.\n"
@@ -197,16 +196,14 @@ def engine_coleta_dados():
     return grade_texto, resumo_sidebar, bloco_noticias
 
 # ==============================================================================
-# EXECUÇÃO DO CONTEXTO WEB (ESTRUTURA E REFRESH M15)
+# EXECUÇÃO DO CONTEXTO WEB COM CONTROLE DE QUOTA (SEGURANÇA 429)
 # ==============================================================================
-# Barra lateral informativa (Dashboard de Variações)
 st.sidebar.header("📊 Grade de Cotações Real-Time")
 st.sidebar.caption(f"Último Scan: {datetime.now().strftime('%H:%M:%S')}")
 
-# Dispara a função de coleta de dados
+# Dispara a função de coleta
 grade_dados, mini_dashboard, noticias = engine_coleta_dados()
 
-# Renderiza painel rápido de cotações na lateral do Streamlit
 for ativo, var in mini_dashboard.items():
     if "+" in var:
         st.sidebar.markdown(f"🟩 **{ativo}**: `{var}`")
@@ -215,47 +212,40 @@ for ativo, var in mini_dashboard.items():
     else:
         st.sidebar.markdown(f"⬜ **{ativo}**: `{var}`")
 
-# Botão manual de emergência para a Mesa de Operações
-if st.sidebar.button("🔄 Forçar Recalibragem de Grade (Clique Manual)"):
+# Botão manual de emergência
+if st.sidebar.button("🔄 Forçar Recalibragem de Grade"):
+    if "analise_cache" in st.session_state:
+        del st.session_state["analise_cache"]
     st.rerun()
 
-# Montagem do Input Final para Inteligência Artificial
-input_api_completo = f"""
-CONTEXTO ATUAL DE TELA RECOLHIDO VIA API DO YAHOO FINANCE:
-{grade_dados}
+# Lógica de controle de cache para não estourar a cota (429)
+if "ultima_execucao" not in st.session_state:
+    st.session_state["ultima_execucao"] = datetime.min
+    st.session_state["analise_cache"] = ""
 
-{noticias}
+tempo_passado = (datetime.now() - st.session_state["ultima_execucao"]).total_seconds()
 
-COMANDO OPERACIONAL:
-Aplique integralmente o seu protocolo mestre e gere o relatório cirúrgico de 22 blocos com base nas variações reais acima.
-REGRA DE SEGURANÇA: Se algum ativo estiver como 'N/A' ou 'Erro', NÃO invente valores. Baseie a análise macro EXCLUSIVAMENTE nos ativos que apresentaram variação real acima.
-Trate o WIN estritamente como consequência estrutural dos motores.
-"""
-
-# Execução com lógica de Retry (segurança contra Erro 503)
-with st.spinner("🤖 Executando Modelo de Inteligência Institucional..."):
-    tentativas = 0
-    sucesso = False
-    while tentativas < 3 and not sucesso:
+# Só chama a API se passaram 850 segundos (14+ min) ou se o cache estiver vazio
+if tempo_passado > 850 or not st.session_state["analise_cache"]:
+    with st.spinner("🤖 Executando Modelo de Inteligência Institucional..."):
         try:
+            # Montagem do input final
+            input_api = f"CONTEXTO: {grade_dados}\n{noticias}\n\n{PROMPT_MESTRE}"
+            
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=input_api_completo
+                contents=input_api
             )
+            st.session_state["analise_cache"] = response.text
+            st.session_state["ultima_execucao"] = datetime.now()
             st.success("✅ Relatório de Cenário Atualizado com Êxito!")
-            st.markdown(response.text)
-            sucesso = True
         except Exception as err:
-            tentativas += 1
-            if tentativas < 3:
-                st.warning(f"⚠️ Instabilidade na API (Tentativa {tentativas}/3). Aguardando 10 segundos...")
-                time.sleep(10)
-            else:
-                st.error(f"❌ Falha crítica no processamento após 3 tentativas: {err}")
+            st.error(f"Falha de processamento na API: {err}")
 
-# ==============================================================================
-# SINCRO DE CANDLE M15 (TEMPORIZADOR AUTOMÁTICO)
-# ==============================================================================
-INTERVALO_M15 = 900
-time.sleep(INTERVALO_M15)
+# Exibe o resultado que está em cache
+st.markdown(st.session_state["analise_cache"])
+
+# Temporizador de 15 minutos para rodar o ciclo novamente
+time.sleep(900)
 st.rerun()
+                
