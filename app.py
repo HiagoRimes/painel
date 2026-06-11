@@ -147,7 +147,6 @@ REGRA MESTRA ABSOLUTA: Trate sempre o WIN como consequência dos drivers institu
 # MOTOR DE CAPTURA DE DADOS (YAHOO FINANCE + NEWS)
 # ==============================================================================
 def engine_coleta_dados():
-    # Dicionário mapeando a nomenclatura exigida para o ticker do Yahoo
     ativos = {
         "WIN (Ibov Cheio)": "^BVSP",
         "WDO (Dólar Comercial)": "BRL=X",
@@ -168,10 +167,10 @@ def engine_coleta_dados():
     for nome, ticker in ativos.items():
         try:
             ticker_obj = yf.Ticker(ticker)
-            # Histórico de 2 dias para capturar fechamento anterior vs atual
-            df = ticker_obj.history(period="2d")
+            # Período de 5 dias como trava de segurança técnica para evitar erros de API
+            df = ticker_obj.history(period="5d")
             
-            if len(df) >= 2:
+            if not df.empty and len(df) >= 2:
                 fechamento_anterior = df['Close'].iloc[-2]
                 preco_atual = df['Close'].iloc[-1]
                 var_percentual = ((preco_atual - fechamento_anterior) / fechamento_anterior) * 100
@@ -179,7 +178,7 @@ def engine_coleta_dados():
                 grade_texto += f"- {nome}: Variação Atual de {var_percentual:+.2f}% | Último Preço: {preco_atual:,.2f}\n"
                 resumo_sidebar[nome] = f"{var_percentual:+.2f}%"
                 
-                # Coleta as manchetes de notícia vinculadas ao Ibov ou mercado global
+                # Coleta notícias apenas para índices principais
                 if ticker in ["^BVSP", "^GSPC"] and not bloco_noticias:
                     noticias_lista = ticker_obj.news
                     if noticias_lista:
@@ -187,9 +186,9 @@ def engine_coleta_dados():
                         for n in noticias_lista[:4]:
                             bloco_noticias += f"• {n['title']} (Fonte: {n.get('publisher', 'Mesa')})\n"
             else:
-                grade_texto += f"- {nome}: Dados de oscilação intraday indisponíveis no momento.\n"
+                grade_texto += f"- {nome}: Dado indisponível (Tentar atualizar).\n"
                 resumo_sidebar[nome] = "N/A"
-        except Exception as e:
+        except Exception:
             grade_texto += f"- {nome}: Erro de comunicação com o servidor da API.\n"
             resumo_sidebar[nome] = "Erro"
             
@@ -198,14 +197,11 @@ def engine_coleta_dados():
 # ==============================================================================
 # EXECUÇÃO DO CONTEXTO WEB (ESTRUTURA E REFRESH M15)
 # ==============================================================================
-# Barra lateral informativa (Dashboard de Variações)
 st.sidebar.header("📊 Grade de Cotações Real-Time")
 st.sidebar.caption(f"Último Scan: {datetime.now().strftime('%H:%M:%S')}")
 
-# Dispara a função de coleta de dados
 grade_dados, mini_dashboard, noticias = engine_coleta_dados()
 
-# Renderiza painel rápido de cotações na lateral do Streamlit
 for ativo, var in mini_dashboard.items():
     if "+" in var:
         st.sidebar.markdown(f"🟩 **{ativo}**: `{var}`")
@@ -214,11 +210,9 @@ for ativo, var in mini_dashboard.items():
     else:
         st.sidebar.markdown(f"⬜ **{ativo}**: `{var}`")
 
-# Botão manual de emergência para a Mesa de Operações
 if st.sidebar.button("🔄 Forçar Recalibragem de Grade (Clique Manual)"):
     st.rerun()
 
-# Montagem do Input Final para Inteligência Artificial
 input_api_completo = f"""
 CONTEXTO ATUAL DE TELA RECOLHIDO VIA API DO YAHOO FINANCE:
 {grade_dados}
@@ -227,28 +221,20 @@ CONTEXTO ATUAL DE TELA RECOLHIDO VIA API DO YAHOO FINANCE:
 
 COMANDO OPERACIONAL:
 Aplique integralmente o seu protocolo mestre e gere o relatório cirúrgico de 22 blocos com base nas variações reais acima.
+REGRA DE SEGURANÇA: Se algum ativo estiver como 'N/A' ou 'Erro', NÃO invente valores. Baseie a análise macro EXCLUSIVAMENTE nos ativos que apresentaram variação real acima.
 Trate o WIN estritamente como consequência estrutural dos motores.
 """
 
-# Execução do Modelo Gemini 2.5 Flash (Velocidade de Mesa)
 with st.spinner("🤖 Executando Modelo de Inteligência Institucional..."):
     try:
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=input_api_completo
         )
-        
-        # Exibe o relatório final formatado com o design limpo em Markdown
         st.success("✅ Relatório de Cenário Atualizado com Êxito!")
         st.markdown(response.text)
-        
     except Exception as err:
         st.error(f"Falha de processamento na API da IA: {err}")
 
-# ==============================================================================
-# SINCRO DE CANDLE M15 (TEMPORIZADOR AUTOMÁTICO)
-# ==============================================================================
-# Intervalo padrão de 15 minutos (900 segundos) sincronizado ao gráfico anchor
-INTERVALO_M15 = 900
-time.sleep(INTERVALO_M15)
+time.sleep(900)
 st.rerun()
