@@ -234,9 +234,9 @@ if tempo_passado > 850 or not st.session_state["analise_cache"]:
             # Montagem do input final
             input_api = f"CONTEXTO: {grade_dados}\n{noticias}\n\n{PROMPT_MESTRE}"
             
-            # Utilizando gemini-1.5-flash para maior disponibilidade (evitar 503)
+            # Utilizando gemini-2.0-flash para maior disponibilidade e suporte
             response = client.models.generate_content(
-                model='gemini-1.5-flash',
+                model='gemini-2.0-flash',
                 contents=input_api
             )
             st.session_state["analise_cache"] = response.text
@@ -250,10 +250,12 @@ if tempo_passado > 850 or not st.session_state["analise_cache"]:
             else:
                 st.error(f"Falha de processamento na API: {err}")
 
-# Exibe o resultado que está em cache
-st.markdown(st.session_state["analise_cache"])
+# Exibe o resultado que está em cache com segurança (verificação de chave)
+if "analise_cache" in st.session_state and st.session_state["analise_cache"]:
+    st.markdown(st.session_state["analise_cache"])
+else:
+    st.info("Aguardando processamento inicial da análise...")
 
 # Temporizador de 15 minutos para rodar o ciclo novamente
 time.sleep(900)
 st.rerun()
-        
