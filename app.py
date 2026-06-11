@@ -1,25 +1,21 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 from PIL import Image
 
 # Configuração da página
 st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
 
-# Configuração da API via Streamlit Secrets
+# Configuração da NOVA API do Google (google.genai)
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=api_key)
-    
-    # --- ALTERAÇÃO AQUI: Mudando para o modelo 'gemini-pro-vision' ---
-    model_name = 'gemini-pro-vision' # Modelo robusto para imagens
-    model = genai.GenerativeModel(model_name)
-    # ---------------------------------------------------------------
-    
+    client = genai.Client(api_key=api_key)
+    # Voltamos ao modelo super rápido e inteligente para imagens
+    model_name = 'gemini-1.5-flash' 
 except Exception as e:
-    st.error("Configuração de API pendente ou inválida. Vá em Settings > Secrets no seu app do Streamlit Cloud e adicione a GOOGLE_API_KEY.")
+    st.error("Configuração de API pendente. Vá em Settings > Secrets no seu app do Streamlit Cloud e adicione a GOOGLE_API_KEY.")
     st.stop()
 
-# Seu Protocolo consolidado
+# Seu Protocolo
 PROTOCOL_FINAL = """
 Você é um mentor de trading institucional de alta performance. Seu papel é analisar prints do TradingView do ativo WIN e ensinar o aluno a pensar como um profissional. Siga rigorosamente este protocolo:
 
@@ -37,31 +33,26 @@ uploaded_file = st.file_uploader("Suba o print do TradingView...", type=["jpg", 
 
 if uploaded_file:
     img = Image.open(uploaded_file)
-    st.image(img, use_container_width=True)
+    
+    # Comando de imagem corrigido conforme os logs do Streamlit
+    st.image(img, width='stretch')
     
     if st.button("Executar Protocolo de Leitura"):
-        with st.spinner(f"Analisando fluxo com o modelo {model_name}..."):
+        with st.spinner("Analisando fluxo com o novo sistema Google..."):
             try:
-                # Prompt combinado
                 prompt = f"{PROTOCOL_FINAL}\n\nAnalise a imagem acima seguindo rigorosamente este protocolo."
                 
-                # Chamada do Gemini com tratamento de erros robusto
-                response = model.generate_content([prompt, img])
+                # Chamada com a nova sintaxe exigida pelo Google
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[img, prompt]
+                )
+                
                 st.markdown("---")
                 st.markdown(response.text)
                 
             except Exception as e:
-                # Se o modelo falhar, mostramos o erro e uma dica
-                st.error(f"Erro ao analisar com o modelo {model_name}: {e}")
-                st.warning("Dica: Se o erro for 'NotFound', o modelo pode não estar disponível na região. Tente usar um print com resolução menor.")
+                st.error(f"Erro na análise: {e}")
 
-# Sidebar com uma ferramenta de diagnóstico
 st.sidebar.markdown("---")
-if st.sidebar.button("Diagnóstico: Listar Modelos"):
-    try:
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        st.sidebar.write("### Modelos disponíveis para sua chave:")
-        for m in available_models:
-            st.sidebar.code(m.replace("models/", ""))
-    except Exception as api_err:
-        st.sidebar.error(f"Não foi possível listar os modelos. Verifique sua chave da API. Erro: {api_err}")
+st.sidebar.info("Sistema atualizado e rodando na nova SDK oficial do Google.")
