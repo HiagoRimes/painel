@@ -5,12 +5,12 @@ from PIL import Image
 # Configuração da página
 st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
 
-# Configuração da API 
+# Configuração da API tradicional com o modelo novo da sua lista
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
     
-    # Usando o modelo moderno da sua lista que sabemos que funciona
+    # Usando o modelo moderno que veio na sua lista de diagnósticos
     model_name = 'gemini-3.5-flash' 
     model = genai.GenerativeModel(model_name)
 except Exception as e:
@@ -40,10 +40,10 @@ if uploaded_file:
     if st.button("Executar Protocolo de Leitura"):
         with st.spinner(f"Analisando fluxo com o modelo {model_name}..."):
             try:
-                # Prompt combinado para o formato da biblioteca antiga
+                # Prompt combinado para o formato da biblioteca estável
                 prompt = f"{PROTOCOL_FINAL}\n\nAnalise a imagem acima seguindo rigorosamente este protocolo."
                 
-                # Resposta enviando os parâmetros na ordem aceita pela biblioteca
+                # Chamada enviando os parâmetros em formato de lista (padrão estável)
                 response = model.generate_content([prompt, img])
                 
                 st.markdown("---")
@@ -51,3 +51,4 @@ if uploaded_file:
                 
             except Exception as e:
                 st.error(f"Erro na análise: {e}")
+                
