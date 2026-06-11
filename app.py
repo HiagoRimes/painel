@@ -40,7 +40,7 @@ else:
     st.stop()
 
 # ==============================================================================
-# PROMPT MESTRE DEFINITIVO (CONSOLIDADO)
+# PROMPT MESTRE DEFINITIVO (CONSOLIDADO E COMPLETO)
 # ==============================================================================
 PROMPT_MESTRE = """
 Atue como um analista técnico e de fluxo institucional de mercado financeiro, focado em Day Trade no minicontrato de Índice Bovespa (WIN). Toda vez que eu te enviar a grade de cotações por texto com as variações reais colhidas da API, você deve processar esses dados e me retornar OBRIGATORIAMENTE um relatório cirúrgico estruturado exatamente nos 22 passos abaixo, utilizando linguagem técnica de mesa de operações (sem adjetivos informais) combinada com os termos genéricos curtos entre aspas.
@@ -147,10 +147,10 @@ REGRA MESTRA ABSOLUTA: Trate sempre o WIN como consequência dos drivers institu
 # MOTOR DE CAPTURA DE DADOS (YAHOO FINANCE + NEWS)
 # ==============================================================================
 def engine_coleta_dados():
-    # Dicionário mapeando a nomenclatura exigida para o ticker do Yahoo
-    # Substituições (ITUB4/VALE3) para garantir dados reais onde índices falham
+    # Siglas mapeadas com proxies de alta liquidez para garantir estabilidade
+    # Alteração para ^IBOV no WIN
     ativos = {
-        "WIN (Ibov Cheio)": "^BVSP",
+        "WIN (Ibov Cheio)": "^IBOV",
         "WDO (Dólar Comercial)": "BRL=X",
         "PETR4": "PETR4.SA",
         "B3SA3": "B3SA3.SA",
@@ -169,10 +169,11 @@ def engine_coleta_dados():
     for nome, ticker in ativos.items():
         try:
             ticker_obj = yf.Ticker(ticker)
-            # Histórico de 5 dias para capturar fechamento anterior vs atual com mais margem
+            # Histórico de 5 dias para garantir robustez no cálculo
             df = ticker_obj.history(period="5d")
             
-            if len(df) >= 2:
+            # Verificação de segurança rigorosa
+            if not df.empty and len(df) >= 2:
                 fechamento_anterior = df['Close'].iloc[-2]
                 preco_atual = df['Close'].iloc[-1]
                 var_percentual = ((preco_atual - fechamento_anterior) / fechamento_anterior) * 100
@@ -180,18 +181,18 @@ def engine_coleta_dados():
                 grade_texto += f"- {nome}: Variação Atual de {var_percentual:+.2f}% | Último Preço: {preco_atual:,.2f}\n"
                 resumo_sidebar[nome] = f"{var_percentual:+.2f}%"
                 
-                # Coleta as manchetes de notícia vinculadas ao Ibov ou mercado global
-                if ticker in ["^BVSP", "^GSPC"] and not bloco_noticias:
+                # Coleta notícias apenas para os índices principais
+                if ticker in ["^IBOV", "^GSPC"] and not bloco_noticias:
                     noticias_lista = ticker_obj.news
                     if noticias_lista:
                         bloco_noticias = "\n📰 FEED DE MANCHETES INSTITUCIONAIS RECENTES:\n"
                         for n in noticias_lista[:4]:
                             bloco_noticias += f"• {n['title']} (Fonte: {n.get('publisher', 'Mesa')})\n"
             else:
-                grade_texto += f"- {nome}: Dados de oscilação intraday indisponíveis no momento.\n"
+                grade_texto += f"- {nome}: Dados de oscilação indisponíveis no momento.\n"
                 resumo_sidebar[nome] = "N/A"
-        except Exception as e:
-            grade_texto += f"- {nome}: Erro de comunicação com o servidor da API.\n"
+        except Exception:
+            grade_texto += f"- {nome}: Erro de comunicação com a API.\n"
             resumo_sidebar[nome] = "Erro"
             
     return grade_texto, resumo_sidebar, bloco_noticias
@@ -206,7 +207,7 @@ st.sidebar.caption(f"Último Scan: {datetime.now().strftime('%H:%M:%S')}")
 # Dispara a função de coleta de dados
 grade_dados, mini_dashboard, noticias = engine_coleta_dados()
 
-# Renderiza painel rápido de cotações na lateral do Streamlit
+# Renderiza painel rápido de cotações na lateral
 for ativo, var in mini_dashboard.items():
     if "+" in var:
         st.sidebar.markdown(f"🟩 **{ativo}**: `{var}`")
@@ -215,7 +216,7 @@ for ativo, var in mini_dashboard.items():
     else:
         st.sidebar.markdown(f"⬜ **{ativo}**: `{var}`")
 
-# Botão manual de emergência para a Mesa de Operações
+# Botão manual de emergência
 if st.sidebar.button("🔄 Forçar Recalibragem de Grade (Clique Manual)"):
     st.rerun()
 
@@ -232,7 +233,7 @@ REGRA DE SEGURANÇA: Se algum ativo estiver como 'N/A' ou 'Erro', NÃO invente v
 Trate o WIN estritamente como consequência estrutural dos motores.
 """
 
-# Execução do Modelo Gemini 2.5 Flash (Velocidade de Mesa)
+# Execução do Modelo Gemini 2.5 Flash
 with st.spinner("🤖 Executando Modelo de Inteligência Institucional..."):
     try:
         response = client.models.generate_content(
@@ -240,7 +241,7 @@ with st.spinner("🤖 Executando Modelo de Inteligência Institucional..."):
             contents=input_api_completo
         )
         
-        # Exibe o relatório final formatado com o design limpo em Markdown
+        # Exibe o relatório final formatado
         st.success("✅ Relatório de Cenário Atualizado com Êxito!")
         st.markdown(response.text)
         
@@ -250,7 +251,6 @@ with st.spinner("🤖 Executando Modelo de Inteligência Institucional..."):
 # ==============================================================================
 # SINCRO DE CANDLE M15 (TEMPORIZADOR AUTOMÁTICO)
 # ==============================================================================
-# Intervalo padrão de 15 minutos (900 segundos) sincronizado ao gráfico anchor
 INTERVALO_M15 = 900
 time.sleep(INTERVALO_M15)
 st.rerun()
