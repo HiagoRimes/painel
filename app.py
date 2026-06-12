@@ -87,7 +87,8 @@ st.info(puxar_calendario())
 uploaded_file = st.file_uploader("Suba o print (Pré-mercado ou Durante o pregão):", type=['jpg', 'png'])
 
 if uploaded_file:
-    st.image(uploaded_file, use_column_width=True)
+    image = Image.open(uploaded_file)
+    st.image(image, use_column_width=True)
     
     if st.button("🚀 Processar Análise Evolutiva"):
         with st.spinner("Conectando variáveis macro e histórico do dia..."):
@@ -95,7 +96,8 @@ if uploaded_file:
             full_prompt = PROMPT_SISTEMA.format(historico=hist_texto) + f"\nAGENDA DO DIA: {puxar_calendario()}"
             
             try:
-                response = model.generate_content([full_prompt, uploaded_file])
+                # CORREÇÃO: Passando o objeto 'image' processado pelo PIL
+                response = model.generate_content([full_prompt, image])
                 st.markdown("### 📊 Relatório Institucional")
                 st.markdown(response.text)
                 st.session_state.historico_analises.append(response.text)
