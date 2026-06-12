@@ -6,17 +6,21 @@ from datetime import datetime
 from PIL import Image
 
 # Configuração da página
-st.set_page_config(page_title="Mentor de Fluxo WIN", layout="wide")
+st.set_page_config(page_title="Mentor Institucional", layout="wide")
 
-# Inicializa memória da sessão
+# Inicializa sessão
 if 'historico' not in st.session_state:
     st.session_state.historico = []
 
-# Configuração API do Google
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Configuração API
+try:
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+    # O modelo 'gemini-1.5-flash' é o padrão atual para visão e texto
+    model = genai.GenerativeModel('gemini-1.5-flash')
+except Exception as e:
+    st.error(f"Erro ao conectar com a API do Google: {e}")
 
-# --- FUNÇÃO DO CALENDÁRIO COM TRADUÇÃO ---
+# Função Calendário
 @st.cache_data(ttl=3600)
 def puxar_calendario():
     try:
@@ -41,52 +45,40 @@ def puxar_calendario():
                 titulo = e.find('title').text
                 titulo_traduzido = traducao.get(titulo, titulo)
                 eventos.append(f"• **{e.find('time').text} ({e.find('country').text})**: {titulo_traduzido}")
-        
         return "\n".join(eventos) if eventos else "Sem eventos de impacto hoje."
-    except: 
-        return "Calendário indisponível."
+    except: return "Calendário indisponível."
 
-# --- INTERFACE ---
-st.title("🎓 Mentor de Fluxo Institucional")
+# Interface
+st.title("🎓 Mentor de Fluxo WIN")
+st.info(f"**Agenda Econômica:**\n{puxar_calendario()}")
 
-# Exibe o Calendário no topo
-st.info(f"**📰 Agenda Econômica de Hoje:**\n{puxar_calendario()}")
-
-# Upload de Imagem
-uploaded_file = st.file_uploader("Suba o print do seu Profit/TradingView...", type=['jpg', 'jpeg', 'png'])
+uploaded_file = st.file_uploader("Suba o print da sua tela:", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Cenário Atual", use_column_width=True)
+    st.image(image, caption="Print carregado para análise", use_column_width=True)
     
-    if st.button("🚀 Analisar Fluxo e Montar Tese"):
-        with st.spinner("O Mentor está processando os dados..."):
-            prompt = f"""
-            Você é um trader institucional sênior. Analise o print enviado e a agenda abaixo.
-            AGENDA MACRO: {puxar_calendario()}
-            
-            Protocolo de Resposta:
-            1. CONTEXTO: Como a agenda impacta o fluxo atual?
-            2. LEITURA DE TELA: Analise os ativos, volume e preços presentes no print.
-            3. DIVERGÊNCIAS: Há sinais de exaustão ou absorção?
-            4. Veredito: Direção provável e regra de bolso para a próxima operação.
-            """
-            
-            response = model.generate_content([prompt, image])
-            st.session_state.historico.append(response.text)
-            st.markdown("### 📊 Parecer Institucional")
-            st.write(response.text)
+    if st.button("🚀 Analisar Fluxo"):
+        with st.spinner("Analisando sua tela e cruzando com a agenda..."):
+            try:
+                prompt = f"""
+                Analise esta imagem que mostra a tela do trader.
+                CALENDÁRIO MACRO: {puxar_calendario()}
+                
+                Sua tarefa:
+                1. Identifique a variação de cada ativo na lista (incluindo Juros Futuros, WDO, PETR4, etc).
+                2. Avalie se o cenário atual no print reflete uma leitura de compra ou venda.
+                3. Dê uma recomendação técnica institucional clara.
+                """
+                
+                response = model.generate_content([prompt, image])
+                st.session_state.historico.append(response.text)
+                st.markdown("### 📊 Parecer Institucional")
+                st.write(response.text)
+            except Exception as e:
+                st.error(f"Erro na análise: {e}")
 
-# Barra Lateral de Controle
-with st.sidebar:
-    st.title("⚙️ Controle")
-    if st.button("🗑️ Limpar Sessão"):
-        st.session_state.historico = []
-        st.rerun()
-    
-    if st.session_state.historico:
-        st.subheader("📜 Diário de Bordo")
-        for i, analise in enumerate(reversed(st.session_state.historico)):
-            st.markdown(f"**Leitura {len(st.session_state.historico) - i}**")
-            st.write(analise[:150] + "...") # Preview
-            st.divider()
+# Sidebar
+if st.sidebar.button("🗑️ Limpar Sessão"):
+    st.session_state.historico = []
+    st.rerun()
