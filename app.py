@@ -6,19 +6,30 @@ from datetime import datetime
 from PIL import Image
 
 # Configuração da página
-st.set_page_config(page_title="Mentor Institucional", layout="wide")
+st.set_config = st.set_page_config(page_title="Mentor Institucional", layout="wide")
 
-# Configuração simplificada da API
-# O SDK gerencia a versão da API automaticamente ao receber a chave
+# Configuração da API
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-# Inicialização do modelo
-# Se o modelo 'models/gemini-1.5-flash' falhar, 
-# tente mudar para 'gemini-1.5-flash' ou 'gemini-1.5-pro'
+# --- DETECÇÃO AUTOMÁTICA DE MODELO ---
+def get_model():
+    # Lista modelos disponíveis que suportam geração de conteúdo
+    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    
+    # Prioridade de modelos (do mais moderno para o básico)
+    prioridade = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro', 'models/gemini-1.0-pro']
+    
+    for p in prioridade:
+        if p in models:
+            return genai.GenerativeModel(p)
+    
+    # Se não achar nenhum da lista, pega o primeiro disponível
+    return genai.GenerativeModel(models[0])
+
 try:
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = get_model()
 except Exception as e:
-    st.error(f"Erro ao inicializar o modelo: {e}")
+    st.error(f"Erro ao listar modelos: {e}")
 
 # Função Calendário
 @st.cache_data(ttl=3600)
@@ -50,7 +61,7 @@ def puxar_calendario():
         return "\n".join(eventos) if eventos else "Sem eventos de impacto hoje."
     except: return "Calendário indisponível."
 
-# Interface Principal
+# Interface
 st.title("🎓 Mentor de Fluxo Institucional")
 st.info(f"**Agenda Econômica:**\n{puxar_calendario()}")
 
@@ -61,7 +72,7 @@ if uploaded_file:
     st.image(image, caption="Cenário de Mercado", use_column_width=True)
     
     if st.button("🚀 Analisar Fluxo"):
-        with st.spinner("Analisando sua tela..."):
+        with st.spinner("O Mentor está lendo sua tela..."):
             try:
                 prompt = f"""
                 Analise esta imagem que contém a grade de ativos.
@@ -69,17 +80,15 @@ if uploaded_file:
                 
                 Sua tarefa:
                 1. Identifique a variação dos ativos.
-                2. Avalie se o cenário reflete compra ou venda no WIN.
-                3. Dê uma recomendação técnica institucional clara.
+                2. Avalie se o cenário reflete compra ou venda.
+                3. Dê uma recomendação técnica clara.
                 """
                 response = model.generate_content([prompt, image])
                 st.markdown("### 📊 Parecer Institucional")
                 st.write(response.text)
-                st.session_state.historico.append(response.text)
             except Exception as e:
-                st.error(f"Erro na análise: {e}")
+                st.error(f"Erro na análise: {e}. Tente novamente.")
 
 # Limpeza
 if st.sidebar.button("🗑️ Limpar Sessão"):
-    st.session_state.historico = []
     st.rerun()
