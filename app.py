@@ -6,35 +6,28 @@ from datetime import datetime
 from PIL import Image
 # Configuração da Página
 st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
-# Configuração da API
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 # --- TRAVA DE SEGURANÇA ---
+# Senha atualizada conforme solicitado
 SENHA_ACESSO = "aprender" 
 def check_password():
     password = st.text_input("🔑 Digite a senha para liberar seu estudo:", type="password")
     if password == SENHA_ACESSO:
         return True
     elif password != "":
-        st.error("Senha incorreta.")
+        st.error("Senha incorreta. Tente novamente.")
         return False
-    return False
-# --- FUNÇÃO DE PROCESSAMENTO COM FAILOVER ---
-def analisar_com_failover(prompt, image):
-    modelos_tentativa = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b']
-    
-    for nome_modelo in modelos_tentativa:
-        try:
-            with st.status(f"Consultando {nome_modelo}...", expanded=True) as status:
-                model = genai.GenerativeModel(nome_modelo)
-                response = model.generate_content([prompt, image], request_options={"timeout": 15})
-                status.update(label=f"✅ Análise concluída via {nome_modelo}", state="complete")
-                return f"### 📊 Relatório Institucional ({nome_modelo})\n\n{response.text}"
-        except Exception as e:
-            st.warning(f"O modelo {nome_modelo} falhou. Tentando o próximo...")
-            continue
-            
-    return "❌ Todos os modelos Gemini estão indisponíveis no momento."
-# --- LÓGICA PRINCIPAL ---
+    else:
+        return False
+# --- CONFIGURAÇÃO API ---
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+def get_model():
+    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    prioridade = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
+    for p in prioridade:
+        if p in models: return genai.GenerativeModel(p)
+    return genai.GenerativeModel(models[0])
+model = get_model()
+# --- LÓGICA PRINCIPAL (SÓ RODA SE A SENHA FOR VÁLIDA) ---
 if check_password():
     
     # Gerenciamento de Memória
@@ -66,8 +59,7 @@ if check_password():
         st.markdown("""
         **PASSO A PASSO:**
         1. Crie uma **nova lista (carteira)** no seu TradingView.
-        2. Adicione todos os ativos abaixo nesta **mesma lista**.
-        3. **IMPORTANTE:** O Mentor só analisa a correlação se você enviar **um único print** com todos os ativos juntos.
+        2. Adicione os ativos abaixo em **um único print** de sua grade completa.
         
 
 | Ativo | Função |
@@ -86,20 +78,21 @@ if check_password():
 
         """)
     st.info(puxar_calendario())
-    uploaded_file = st.file_uploader("Suba o print (único):", type=['jpg', 'png'])
+    uploaded_file = st.file_uploader("Suba o print:", type=['jpg', 'png'])
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, use_column_width=True)
-        
         if st.button("🚀 Processar Análise Evolutiva"):
-            hist_texto = "\n".join(st.session_state.historico_analises)
-            full_prompt = PROMPT_SISTEMA.format(historico=hist_texto) + f"\nAGENDA: {puxar_calendario()}"
-            
-            resultado = analisar_com_failover(full_prompt, image)
-            st.markdown(resultado)
-            
-            if "✅" in resultado:
-                st.session_state.historico_analises.append(resultado)
+            with st.spinner("Conectando variáveis macro..."):
+                hist_texto = "\n".join(st.session_state.historico_analises)
+                full_prompt = PROMPT_SISTEMA.format(historico=hist_texto) + f"\nAGENDA: {puxar_calendario()}"
+                try:
+                    response = model.generate_content([full_prompt, image])
+                    st.markdown("### 📊 Relatório Institucional")
+                    st.markdown(response.text)
+                    st.session_state.historico_analises.append(response.text)
+                except Exception as e:
+                    st.error(f"Erro: {e}")
     if st.sidebar.button("🗑️ Limpar Pregão Atual"):
         st.session_state.historico_analises = []
         st.rerun()
