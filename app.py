@@ -57,26 +57,26 @@ def puxar_calendario():
         return "### 📅 Calendário\nErro ao carregar dados."
 # --- INTERFACE ---
 st.title("🎓 Mentor Institucional de Fluxo")
-# Guia de Configuração Interativa
+# Guia de Configuração Interativa (Links Corrigidos e Limpos)
 with st.expander("📖 Guia: Como configurar sua Grade de Ativos (Clique aqui)"):
     st.markdown("""
 
-| Ativo | Função no Fluxo | Link (TradingView) |
-| :--- | :--- | :--- |
-| **[WIN1!](https://br.tradingview.com/symbols/BMFBOVESPA-WIN1/)** | Índice Futuro (O objeto da análise) | [Abrir](https://br.tradingview.com/symbols/BMFBOVESPA-WIN1/) |
-| **[WDO1!](https://br.tradingview.com/symbols/BMFBOVESPA-WDO1/)** | Dólar (Motor macro/câmbio) | [Abrir](https://br.tradingview.com/symbols/BMFBOVESPA-WDO1/) |
-| **[DI1N2029](https://br.tradingview.com/symbols/BMFBOVESPA-DI11!/?contract=DI1N2029)** | Juros Futuros (Motor de longo prazo) | [Abrir](https://br.tradingview.com/symbols/BMFBOVESPA-DI11!/?contract=DI1N2029) |
-| **[PETR4](https://br.tradingview.com/symbols/BMFBOVESPA-PETR4/)** | Commodities (Líder da bolsa BR) | [Abrir](https://br.tradingview.com/symbols/BMFBOVESPA-PETR4/) |
-| **[IMAT](https://br.tradingview.com/symbols/BMFBOVESPA-IMAT/)** | Materiais Básicos (Força industrial) | [Abrir](https://br.tradingview.com/symbols/BMFBOVESPA-IMAT/) |
-| **[IFNC](https://br.tradingview.com/symbols/BMFBOVESPA-IFNC/)** | Setor Financeiro (Bancos) | [Abrir](https://br.tradingview.com/symbols/BMFBOVESPA-IFNC/) |
-| **[ES1!](https://br.tradingview.com/symbols/CME_MINI-ES1/)** | S&P 500 (Sentimento global) | [Abrir](https://br.tradingview.com/symbols/CME_MINI-ES1/) |
-| **[NQ1!](https://br.tradingview.com/symbols/CME_MINI-NQ1!/)** | Nasdaq (Tecnologia/Risco) | [Abrir](https://br.tradingview.com/symbols/CME_MINI-NQ1!/) |
-| **[B3SA3](https://br.tradingview.com/symbols/BMFBOVESPA-B3SA3/)** | B3 (Termômetro da bolsa) | [Abrir](https://br.tradingview.com/symbols/BMFBOVESPA-B3SA3/) |
-| **[EWZ](https://br.tradingview.com/symbols/AMEX-EWZ/)** | ETF Brasil (Sentimento estrangeiro) | [Abrir](https://br.tradingview.com/symbols/AMEX-EWZ/) |
-| **[VIX](https://br.tradingview.com/symbols/TVC-VIX/)** | Índice de Volatilidade (O "medo") | [Abrir](https://br.tradingview.com/symbols/TVC-VIX/) |
+| Ativo | Função no Fluxo |
+| :--- | :--- |
+| **[WIN1!](https://br.tradingview.com/symbols/BMFBOVESPA-WIN1!/)** | Índice Futuro (O objeto da análise) |
+| **[WDO1!](https://br.tradingview.com/symbols/BMFBOVESPA-WDO1!/)** | Dólar (Motor macro/câmbio) |
+| **[DI1N2029](https://br.tradingview.com/symbols/BMFBOVESPA-DI11!/?contract=DI1N2029)** | Juros Futuros (Motor de longo prazo) |
+| **[PETR4](https://br.tradingview.com/symbols/BMFBOVESPA-PETR4/)** | Commodities (Líder da bolsa BR) |
+| **[IMAT](https://br.tradingview.com/symbols/BMFBOVESPA-IMAT/)** | Materiais Básicos (Força industrial) |
+| **[IFNC](https://br.tradingview.com/symbols/BMFBOVESPA-IFNC/)** | Setor Financeiro (Bancos) |
+| **[ES1!](https://br.tradingview.com/symbols/CME_MINI-ES1!/)** | S&P 500 (Sentimento global) |
+| **[NQ1!](https://br.tradingview.com/symbols/CME_MINI-NQ1!/)** | Nasdaq (Tecnologia/Risco) |
+| **[B3SA3](https://br.tradingview.com/symbols/BMFBOVESPA-B3SA3/)** | B3 (Termômetro da bolsa) |
+| **[EWZ](https://br.tradingview.com/symbols/AMEX-EWZ/)** | ETF Brasil (Sentimento estrangeiro) |
+| **[VIX](https://br.tradingview.com/symbols/TVC-VIX/)** | Índice de Volatilidade (O "medo") |
 
     """)
-    st.markdown("*Dica: Certifique-se de que a variação percentual (%) esteja visível no print!*")
+    st.markdown("*Dica: Clique no nome do ativo para abrir o gráfico. Certifique-se de que a variação % esteja visível no print!*")
 st.info(puxar_calendario())
 uploaded_file = st.file_uploader("Suba o print (Pré-mercado ou Durante o pregão):", type=['jpg', 'png'])
 if uploaded_file:
