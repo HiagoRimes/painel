@@ -11,7 +11,6 @@ st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
 # Configuração da API
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-# Detecção Automática de Modelo
 def get_model():
     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     prioridade = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']
@@ -45,20 +44,44 @@ def puxar_calendario():
 # Protocolo do Sistema
 PROMPT_SISTEMA = """
 Você é um Analista de Fluxo Institucional Sênior. Analise o print da grade de ativos e a agenda fornecida seguindo estritamente este protocolo:
-
-1. CONTEXTO DO DIA: Analise a agenda e classifique o impacto (Alta/Média/Baixa). Resuma o clima macro.
-2. ESTADO DOS MOTORES: Avalie DI, WDO, S&P, Nasdaq, VIX, IFNC e IMAT (Direção/Força/Influência).
-3. CARTEIRA: Analise a correlação dos ativos do print com o WIN. Defina se estão alinhados ou em conflito.
-4. TRANSMISSÃO DE FLUXO: Identifique quem está comandando o mercado (Exterior/Macro/Interno/Cabo de Guerra).
-5. ESTADO FINAL DO MERCADO: Defina Compra/Venda/Neutro. Dê a direção provável do WIN com justificativa técnica.
-6. MODO PROFESSOR: Explique o mecanismo de correlação, um erro comum de leitura e uma regra prática para o dia.
-
-REGRAS: WIN é consequência. Cruzar dados de todos os blocos. Ser objetivo e scannable.
+1. CONTEXTO DO DIA: Analise a agenda e classifique o impacto. Resuma o clima macro.
+2. ESTADO DOS MOTORES: Avalie DI, WDO, S&P, Nasdaq, VIX, IFNC e IMAT.
+3. CARTEIRA: Analise a correlação dos ativos do print com o WIN.
+4. TRANSMISSÃO DE FLUXO: Identifique quem comanda o mercado (Exterior/Macro/Interno/Cabo de Guerra).
+5. ESTADO FINAL DO MERCADO: Defina Compra/Venda/Neutro. Dê a direção provável do WIN.
+6. MODO PROFESSOR: Explique o mecanismo, erro comum e regra prática.
+REGRAS: WIN é consequência. Se os dados da agenda e os do print divergirem, priorize o print (absorção).
 """
 
 # Interface
 st.title("🎓 Mentor de Fluxo Institucional")
 st.info(f"**Agenda Econômica:**\n{puxar_calendario()}")
+
+# --- BOTÃO DE GUIA NA SIDEBAR ---
+with st.sidebar:
+    st.title("⚙️ Configurações")
+    with st.expander("📖 Guia de Configuração da Grade"):
+        st.markdown("""
+        Para que o Mentor analise sua tela com precisão, configure sua lista no **TradingView** exatamente com estes ativos:
+        
+        1. **WIN1!** (Mini Índice)
+        2. **WDO1!** (Mini Dólar)
+        3. **DI1N2029** (Juros Futuros)
+        4. **PETR4** (Commodities)
+        5. **IMAT** (Materiais Básicos)
+        6. **IFNC** (Financeiro)
+        7. **ES1!** (S&P 500)
+        8. **NQ1!** (Nasdaq)
+        9. **B3SA3** (Líder B3)
+        10. **EWZ** (ETF Brasil)
+        11. **VIX** (Volatilidade)
+        
+        **Dica:** Garanta que a variação percentual esteja visível no seu print!
+        """)
+    
+    if st.button("🗑️ Limpar Histórico"):
+        st.session_state.historico = []
+        st.rerun()
 
 uploaded_file = st.file_uploader("Suba o print do Profit/TradingView:", type=['jpg', 'jpeg', 'png'])
 
@@ -77,7 +100,4 @@ if uploaded_file:
                 st.session_state.historico.append(response.text)
             except Exception as e:
                 st.error(f"Erro na análise: {e}")
-
-if st.sidebar.button("🗑️ Limpar Sessão"):
-    st.session_state.historico = []
-    st.rerun()
+                    
