@@ -17,31 +17,28 @@ def get_model():
 
 model = get_model()
 
-# --- GERENCIAMENTO DE MEMÓRIA E LIMPEZA ---
+# Gerenciamento de Memória
 if 'historico_data' not in st.session_state: st.session_state.historico_data = datetime.now().date()
 if 'historico_analises' not in st.session_state: st.session_state.historico_analises = []
 
-# Auto-limpeza: Se o dia mudou, limpa tudo
 if st.session_state.historico_data != datetime.now().date():
     st.session_state.historico_analises = []
     st.session_state.historico_data = datetime.now().date()
 
-# --- PROTOCOLO EVOLUTIVO ---
+# Protocolo Evolutivo
 PROMPT_SISTEMA = """
 Você é um Estrategista de Mesa de Operações. Seu foco é a correlação entre Macro, Geopolítica, Notícias e o Fluxo do WIN.
 Protocolo de Análise:
-1. MODO PRÉ-MERCADO: Se for antes das 09:00, compare o fechamento do dia anterior (do print) com o cenário externo atual (VIX/SP500) para projetar a abertura.
-2. ANÁLISE EVOLUTIVA: Considere as análises anteriores deste pregão fornecidas abaixo. O fluxo está mantendo a tendência ou há mudança de dominância?
-3. SÍNTESE INSTITUCIONAL: Siga os 6 blocos do protocolo (Contexto, Motores, Carteira, Fluxo, Estado Final, Modo Professor).
+1. MODO PRÉ-MERCADO: Se for antes das 09:00, compare o fechamento do dia anterior (do print) com o cenário externo atual para projetar a abertura.
+2. ANÁLISE EVOLUTIVA: Considere as análises anteriores deste pregão. O fluxo está mantendo a tendência ou há mudança de dominância?
+3. SÍNTESE INSTITUCIONAL: Siga os 6 blocos (Contexto, Motores, Carteira, Fluxo, Estado Final, Modo Professor).
 4. REGRAS: WIN é consequência. Se os dados da agenda e os do print divergirem, a prioridade é o fluxo real (absorção/exaustão).
 
-HISTÓRICO DO DIA (Prints anteriores):
-{historico}
+HISTÓRICO DO DIA: {historico}
 """
 
 @st.cache_data(ttl=3600)
 def puxar_calendario():
-    # ... (mesma função anterior) ...
     try:
         url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
         response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
@@ -54,11 +51,15 @@ def puxar_calendario():
 # Interface
 st.title("🎓 Mentor Institucional de Fluxo")
 
-with st.sidebar:
-    st.title("⚙️ Configurações")
-    if st.button("🗑️ Limpar Pregão Atual"):
-        st.session_state.historico_analises = []
-        st.rerun()
+# --- GUIA NO TOPO ---
+with st.expander("📖 Guia: Como configurar sua Grade de Ativos"):
+    st.markdown("""
+    Para o Mentor realizar uma análise perfeita, sua lista no TradingView deve conter estes ativos:
+    **WIN1!, WDO1!, DI1N2029, PETR4, IMAT, IFNC, ES1!, NQ1!, B3SA3, EWZ, VIX.**
+    *Certifique-se de que a variação percentual esteja visível no print enviado!*
+    """)
+
+st.info(f"**Agenda Econômica:**\n{puxar_calendario()}")
 
 uploaded_file = st.file_uploader("Suba o print (Pré-mercado ou Durante o pregão):", type=['jpg', 'png'])
 
@@ -73,7 +74,13 @@ if uploaded_file:
             
             try:
                 response = model.generate_content([full_prompt, image])
+                st.markdown("### 📊 Resultado da Análise")
                 st.markdown(response.text)
                 st.session_state.historico_analises.append(response.text)
             except Exception as e:
                 st.error(f"Erro: {e}")
+
+if st.sidebar.button("🗑️ Limpar Pregão Atual"):
+    st.session_state.historico_analises = []
+    st.rerun()
+    
