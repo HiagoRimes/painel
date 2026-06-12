@@ -8,12 +8,15 @@ from PIL import Image
 # Configuração da página
 st.set_page_config(page_title="Mentor Institucional", layout="wide")
 
-# Configuração da API: Forçando a versão v1 para evitar o erro v1beta
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"], client_options={"api_version": "v1"})
+# Configuração simplificada da API
+# O SDK gerencia a versão da API automaticamente ao receber a chave
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-# Inicialização do modelo com prefixo completo
+# Inicialização do modelo
+# Se o modelo 'models/gemini-1.5-flash' falhar, 
+# tente mudar para 'gemini-1.5-flash' ou 'gemini-1.5-pro'
 try:
-    model = genai.GenerativeModel('models/gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
     st.error(f"Erro ao inicializar o modelo: {e}")
 
@@ -61,11 +64,11 @@ if uploaded_file:
         with st.spinner("Analisando sua tela..."):
             try:
                 prompt = f"""
-                Analise esta imagem que contém a grade de ativos (WIN, WDO, Juros, etc).
-                CALENDÁRIO MACRO: {puxar_calendario()}
+                Analise esta imagem que contém a grade de ativos.
+                AGENDA MACRO: {puxar_calendario()}
                 
                 Sua tarefa:
-                1. Identifique a variação dos ativos no print.
+                1. Identifique a variação dos ativos.
                 2. Avalie se o cenário reflete compra ou venda no WIN.
                 3. Dê uma recomendação técnica institucional clara.
                 """
