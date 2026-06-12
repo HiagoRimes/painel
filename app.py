@@ -8,17 +8,16 @@ from PIL import Image
 # Configuração da página
 st.set_page_config(page_title="Mentor Institucional", layout="wide")
 
-# Configuração da API - Protegida
-api_key = st.secrets.get("GOOGLE_API_KEY")
-genai.configure(api_key=api_key)
+# Configuração da API: Forçando a versão v1 para evitar o erro v1beta
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"], client_options={"api_version": "v1"})
 
-# Tente inicializar o modelo. Caso o nome esteja divergente na sua conta, ele avisará.
+# Inicialização do modelo com prefixo completo
 try:
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('models/gemini-1.5-flash')
 except Exception as e:
-    st.error(f"Erro ao carregar o modelo. Verifique se sua chave está ativa no Google AI Studio. Detalhe: {e}")
+    st.error(f"Erro ao inicializar o modelo: {e}")
 
-# Função Calendário (Tradução Inclusa)
+# Função Calendário
 @st.cache_data(ttl=3600)
 def puxar_calendario():
     try:
@@ -33,7 +32,9 @@ def puxar_calendario():
             "Federal Funds Rate": "Decisão de Taxa de Juros (Fed)",
             "GDP": "PIB",
             "Retail Sales": "Vendas no Varejo",
-            "Manufacturing PMI": "PMI Industrial"
+            "Manufacturing PMI": "PMI Industrial",
+            "Prelim UoM Consumer Sentiment": "Sentimento do Consumidor UoM",
+            "Prelim UoM Inflation Expectations": "Expectativas de Inflação UoM"
         }
         
         hoje = datetime.now().strftime("%m-%d-%Y")
@@ -46,7 +47,7 @@ def puxar_calendario():
         return "\n".join(eventos) if eventos else "Sem eventos de impacto hoje."
     except: return "Calendário indisponível."
 
-# Interface
+# Interface Principal
 st.title("🎓 Mentor de Fluxo Institucional")
 st.info(f"**Agenda Econômica:**\n{puxar_calendario()}")
 
@@ -57,20 +58,25 @@ if uploaded_file:
     st.image(image, caption="Cenário de Mercado", use_column_width=True)
     
     if st.button("🚀 Analisar Fluxo"):
-        with st.spinner("Analisando a tela com IA..."):
+        with st.spinner("Analisando sua tela..."):
             try:
-                # O prompt é enviado junto com a imagem processada pela PIL
                 prompt = f"""
-                Você é um mentor de trading. Analise a imagem anexada, que contém a grade de ativos.
-                AGENDA MACRO: {puxar_calendario()}
+                Analise esta imagem que contém a grade de ativos (WIN, WDO, Juros, etc).
+                CALENDÁRIO MACRO: {puxar_calendario()}
                 
-                Analise os dados do print (WDO, WIN, Juros, etc) e cruze com a agenda.
-                Dê uma leitura institucional: o fluxo está comprador ou vendedor?
-                O que a relação entre o print e a agenda indica para a próxima operação?
+                Sua tarefa:
+                1. Identifique a variação dos ativos no print.
+                2. Avalie se o cenário reflete compra ou venda no WIN.
+                3. Dê uma recomendação técnica institucional clara.
                 """
-                
                 response = model.generate_content([prompt, image])
                 st.markdown("### 📊 Parecer Institucional")
                 st.write(response.text)
+                st.session_state.historico.append(response.text)
             except Exception as e:
-                st.error(f"Erro ao gerar conteúdo: {e}")
+                st.error(f"Erro na análise: {e}")
+
+# Limpeza
+if st.sidebar.button("🗑️ Limpar Sessão"):
+    st.session_state.historico = []
+    st.rerun()
