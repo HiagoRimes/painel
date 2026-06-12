@@ -57,8 +57,15 @@ def puxar_calendario():
         return "### 📅 Calendário\nErro ao carregar dados."
 # --- INTERFACE ---
 st.title("🎓 Mentor Institucional de Fluxo")
-# Guia de Configuração Interativa (Links Corrigidos e Limpos)
-with st.expander("📖 Guia: Como configurar sua Grade de Ativos (Clique aqui)"):
+# Guia de Configuração Atualizado
+with st.expander("📖 Guia: Como configurar sua Grade de Ativos (LEIA ANTES DE SUBIR O PRINT)"):
+    st.markdown("""
+    **PASSO A PASSO OBRIGATÓRIO:**
+    1. Crie uma **nova lista (carteira)** no seu TradingView.
+    2. Adicione todos os ativos listados abaixo nesta **mesma lista**.
+    3. **IMPORTANTE:** O Mentor só consegue analisar a correlação se você enviar **um único print** contendo todos os ativos juntos.
+    """)
+    
     st.markdown("""
 
 | Ativo | Função no Fluxo |
@@ -76,7 +83,7 @@ with st.expander("📖 Guia: Como configurar sua Grade de Ativos (Clique aqui)")
 | **[VIX](https://br.tradingview.com/symbols/TVC-VIX/)** | Índice de Volatilidade (O "medo") |
 
     """)
-    st.markdown("*Dica: Clique no nome do ativo para abrir o gráfico. Certifique-se de que a variação % esteja visível no print!*")
+    st.markdown("*Dica: Clique no nome do ativo para abrir. Certifique-se de que a variação % esteja visível no print único!*")
 st.info(puxar_calendario())
 uploaded_file = st.file_uploader("Suba o print (Pré-mercado ou Durante o pregão):", type=['jpg', 'png'])
 if uploaded_file:
