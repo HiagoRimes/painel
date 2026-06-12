@@ -8,19 +8,17 @@ from PIL import Image
 # Configuração da página
 st.set_page_config(page_title="Mentor Institucional", layout="wide")
 
-# Inicializa sessão
-if 'historico' not in st.session_state:
-    st.session_state.historico = []
+# Configuração da API - Protegida
+api_key = st.secrets.get("GOOGLE_API_KEY")
+genai.configure(api_key=api_key)
 
-# Configuração API
+# Tente inicializar o modelo. Caso o nome esteja divergente na sua conta, ele avisará.
 try:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    # O modelo 'gemini-1.5-flash' é o padrão atual para visão e texto
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    st.error(f"Erro ao conectar com a API do Google: {e}")
+    st.error(f"Erro ao carregar o modelo. Verifique se sua chave está ativa no Google AI Studio. Detalhe: {e}")
 
-# Função Calendário
+# Função Calendário (Tradução Inclusa)
 @st.cache_data(ttl=3600)
 def puxar_calendario():
     try:
@@ -49,36 +47,30 @@ def puxar_calendario():
     except: return "Calendário indisponível."
 
 # Interface
-st.title("🎓 Mentor de Fluxo WIN")
+st.title("🎓 Mentor de Fluxo Institucional")
 st.info(f"**Agenda Econômica:**\n{puxar_calendario()}")
 
-uploaded_file = st.file_uploader("Suba o print da sua tela:", type=['jpg', 'jpeg', 'png'])
+uploaded_file = st.file_uploader("Suba o print do Profit/TradingView:", type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Print carregado para análise", use_column_width=True)
+    st.image(image, caption="Cenário de Mercado", use_column_width=True)
     
     if st.button("🚀 Analisar Fluxo"):
-        with st.spinner("Analisando sua tela e cruzando com a agenda..."):
+        with st.spinner("Analisando a tela com IA..."):
             try:
+                # O prompt é enviado junto com a imagem processada pela PIL
                 prompt = f"""
-                Analise esta imagem que mostra a tela do trader.
-                CALENDÁRIO MACRO: {puxar_calendario()}
+                Você é um mentor de trading. Analise a imagem anexada, que contém a grade de ativos.
+                AGENDA MACRO: {puxar_calendario()}
                 
-                Sua tarefa:
-                1. Identifique a variação de cada ativo na lista (incluindo Juros Futuros, WDO, PETR4, etc).
-                2. Avalie se o cenário atual no print reflete uma leitura de compra ou venda.
-                3. Dê uma recomendação técnica institucional clara.
+                Analise os dados do print (WDO, WIN, Juros, etc) e cruze com a agenda.
+                Dê uma leitura institucional: o fluxo está comprador ou vendedor?
+                O que a relação entre o print e a agenda indica para a próxima operação?
                 """
                 
                 response = model.generate_content([prompt, image])
-                st.session_state.historico.append(response.text)
                 st.markdown("### 📊 Parecer Institucional")
                 st.write(response.text)
             except Exception as e:
-                st.error(f"Erro na análise: {e}")
-
-# Sidebar
-if st.sidebar.button("🗑️ Limpar Sessão"):
-    st.session_state.historico = []
-    st.rerun()
+                st.error(f"Erro ao gerar conteúdo: {e}")
