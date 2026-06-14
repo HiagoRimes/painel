@@ -20,9 +20,10 @@ def get_best_model():
         return None
     except: return None
 
-# --- FUNÇÃO DE BUSCA PARA TABELA ---
-def buscar_dados_para_tabela():
+# --- FUNÇÃO DE BUSCA DE TODOS OS ATIVOS ---
+def buscar_dados_completos():
     token = "T95TARf3vRa3adDmBwCJAZ"
+    # Grade completa original
     tickers = ["WIN1!", "WDO1!", "DI1F27", "PETR4", "VALE3", "B3SA3", "ES1!", "NQ1!", "VIX"]
     dados_formatados = []
     
@@ -39,7 +40,11 @@ def buscar_dados_para_tabela():
                         "Preço (R$)": res.get('regularMarketPrice', 0),
                         "Variação (%)": res.get('regularMarketChangePercent', 0)
                     })
-        except: continue
+                else:
+                    # Adiciona mesmo sem dado para manter a consistência da tabela
+                    dados_formatados.append({"Ativo": ticker, "Preço (R$)": "N/D", "Variação (%)": "N/D"})
+        except:
+            dados_formatados.append({"Ativo": ticker, "Preço (R$)": "Erro", "Variação (%)": "Erro"})
     return pd.DataFrame(dados_formatados)
 
 # --- INTERFACE ---
@@ -55,22 +60,24 @@ if password == SENHA_ACESSO:
             st.error("Erro ao conectar com a IA.")
         else:
             with st.spinner("Mesa de operações em conexão..."):
-                df = buscar_dados_para_tabela()
+                df = buscar_dados_completos()
                 
                 # --- EXIBIÇÃO DA TABELA ---
-                st.markdown("### 📋 Painel de Monitoramento")
+                st.markdown("### 📋 Painel de Monitoramento (Carteira Completa)")
                 st.table(df)
                 
                 # --- ANÁLISE IA ---
                 dados_texto = df.to_string(index=False)
                 prompt = f"""
-                Você é um Estrategista de Mesa. Analise os dados abaixo focando na correlação:
+                Você é um Estrategista de Mesa e Mestre em Educação Financeira. 
+                Analise esta carteira completa focando na correlação entre os ativos:
                 {dados_texto}
                 
                 Instruções:
-                1. O WIN é consequência. Relacione com WDO, DI e ativos globais.
-                2. Identifique fluxos e pressões.
-                3. Seja didático e profissional.
+                1. Analise como os índices futuros (WIN/WDO) reagem à dinâmica dos juros (DI) e ativos globais (ES1!/VIX).
+                2. Fluxo real sempre vence: observe os pesos de PETR4, VALE3 e B3SA3.
+                3. Conecte os pontos: como o cenário macro afeta o Índice?
+                4. Seja didático, direto e profissional.
                 """
                 
                 try:
@@ -78,7 +85,7 @@ if password == SENHA_ACESSO:
                     st.markdown("### 📊 Relatório Institucional")
                     st.write(response.text)
                 except Exception as e:
-                    st.error(f"Erro ao gerar conteúdo: {e}")
+                    st.error(f"Erro ao gerar relatório: {e}")
 elif password != "":
     st.error("Senha incorreta.")
-        
+                
