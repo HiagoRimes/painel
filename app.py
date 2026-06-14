@@ -1,11 +1,12 @@
 import streamlit as st
 import google.generativeai as genai
+from google.api_core import exceptions
 import requests
 import xml.etree.ElementTree as ET
 import re
 from datetime import datetime
 from PIL import Image
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Mesa Institucional WIN", layout="wide")
@@ -62,7 +63,12 @@ def processar_memoria(texto):
     match = re.search(r"MEMORIA:\s*VIES=(.*?)\s*CONVICCAO=([0-9.,%]+)\s*MOTOR=(.*)$", texto, re.MULTILINE | re.IGNORECASE)
     return f"{match.group(1).strip()} | {match.group(2).strip()} | {match.group(3).strip()}" if match else None
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+# --- RETRY POLICY (Proteção contra ResourceExhausted) ---
+@retry(
+    stop=stop_after_attempt(3), 
+    wait=wait_exponential(multiplier=2, min=4, max=20),
+    retry=retry_if_exception_type((exceptions.ResourceExhausted, exceptions.ServiceUnavailable))
+)
 def gerar_analise_segura(prompt, img):
     return model.generate_content([prompt, img], request_options={"timeout": 60})
 
@@ -89,4 +95,10 @@ if file and st.button("🚀 Executar Análise"):
                 st.warning(f"Análise limitada: {res.candidates[0].finish_reason.name if res.candidates else 'Erro crítico'}")
                     
         except Exception as e:
-            st.error(f"Erro na mesa: {str(e)}")
+            if "ResourceExhausted" in str(e):
+                st.error("🚨 Limite de cota atingido! Aguarde alguns instantes ou verifique seu plano no Google AI Studio.")
+            elif "finish_reason" in str(e).lower() or "safety" in str(e).lower():
+                st.warning("A análise foi bloqueada por diretrizes de segurança.")
+            else:
+                st.error(f"Falha técnica na mesa: {str(e)}")
+    
