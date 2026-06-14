@@ -2,7 +2,6 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 import pandas as pd
-from datetime import datetime
 
 # Configuração da Página
 st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
@@ -20,12 +19,12 @@ def get_best_model():
         return None
     except: return None
 
-# --- FUNÇÃO DE BUSCA DE TODOS OS ATIVOS ---
-def buscar_dados_completos():
+# --- FUNÇÃO DE BUSCA PARA A SUA GRADE EXATA ---
+def buscar_dados_da_grade():
     token = "T95TARf3vRa3adDmBwCJAZ"
-    # Grade completa original
-    tickers = ["WIN1!", "WDO1!", "DI1F27", "PETR4", "VALE3", "B3SA3", "ES1!", "NQ1!", "VIX"]
-    dados_formatados = []
+    # Lista extraída exatamente do seu print
+    tickers = ["WIN1!", "WDO1!", "DI1N2029", "PETR4", "IMAT", "IFNC", "ES1!", "NQ1!", "B3SA3", "EWZ", "VIX"]
+    dados = []
     
     for ticker in tickers:
         try:
@@ -35,57 +34,50 @@ def buscar_dados_completos():
                 data = response.json()
                 if 'results' in data and len(data['results']) > 0:
                     res = data['results'][0]
-                    dados_formatados.append({
+                    dados.append({
                         "Ativo": ticker,
-                        "Preço (R$)": res.get('regularMarketPrice', 0),
-                        "Variação (%)": res.get('regularMarketChangePercent', 0)
+                        "Preço": res.get('regularMarketPrice', 0),
+                        "Var (%)": res.get('regularMarketChangePercent', 0)
                     })
-                else:
-                    # Adiciona mesmo sem dado para manter a consistência da tabela
-                    dados_formatados.append({"Ativo": ticker, "Preço (R$)": "N/D", "Variação (%)": "N/D"})
         except:
-            dados_formatados.append({"Ativo": ticker, "Preço (R$)": "Erro", "Variação (%)": "Erro"})
-    return pd.DataFrame(dados_formatados)
+            continue
+    return pd.DataFrame(dados)
 
 # --- INTERFACE ---
-password = st.text_input("🔑 Digite a senha para liberar seu estudo:", type="password")
+password = st.text_input("🔑 Digite a senha:", type="password")
 
 if password == SENHA_ACESSO:
-    st.title("🎓 Mentor Institucional: Análise de Correlação")
+    st.title("🎓 Mentor Institucional: Visão Sistêmica")
     
     if st.button("🚀 Processar Análise de Correlação"):
-        model = get_best_model()
+        df = buscar_dados_da_grade()
         
-        if model is None:
-            st.error("Erro ao conectar com a IA.")
+        if df.empty:
+            st.error("Erro ao carregar dados da grade. Verifique a conexão com a API.")
         else:
-            with st.spinner("Mesa de operações em conexão..."):
-                df = buscar_dados_completos()
-                
-                # --- EXIBIÇÃO DA TABELA ---
-                st.markdown("### 📋 Painel de Monitoramento (Carteira Completa)")
-                st.table(df)
-                
-                # --- ANÁLISE IA ---
-                dados_texto = df.to_string(index=False)
-                prompt = f"""
-                Você é um Estrategista de Mesa e Mestre em Educação Financeira. 
-                Analise esta carteira completa focando na correlação entre os ativos:
-                {dados_texto}
-                
-                Instruções:
-                1. Analise como os índices futuros (WIN/WDO) reagem à dinâmica dos juros (DI) e ativos globais (ES1!/VIX).
-                2. Fluxo real sempre vence: observe os pesos de PETR4, VALE3 e B3SA3.
-                3. Conecte os pontos: como o cenário macro afeta o Índice?
-                4. Seja didático, direto e profissional.
-                """
-                
+            # 1. Exibe a tabela completa
+            st.markdown("### 📋 Painel de Monitoramento")
+            st.table(df)
+            
+            # 2. Processa com a IA
+            model = get_best_model()
+            prompt = f"""
+            Você é um Estrategista de Mesa de Operações. 
+            Analise os dados abaixo focando na CORRELAÇÃO total da minha grade:
+            {df.to_string(index=False)}
+            
+            REGRAS PARA A ANÁLISE:
+            1. WIN (WIN1!) é consequência. Explique a correlação com WDO1!, DI1N2029 e os índices globais (ES1!, NQ1!).
+            2. Fluxo Real: Como a variação dos pesos (PETR4, IMAT, IFNC, B3SA3) está impactando o índice?
+            3. Risco Global: Como o VIX e os futuros americanos (ES1!, NQ1!) estão ditando o tom do pregão?
+            4. Seja direto, técnico e didático. Conecte os pontos da minha grade de estudo.
+            """
+            
+            with st.spinner("Analisando correlações..."):
                 try:
                     response = model.generate_content(prompt)
-                    st.markdown("### 📊 Relatório Institucional")
+                    st.markdown("### 📊 Relatório de Correlação")
                     st.write(response.text)
                 except Exception as e:
-                    st.error(f"Erro ao gerar relatório: {e}")
-elif password != "":
-    st.error("Senha incorreta.")
-                
+                    st.error(f"Erro na IA: {e}")
+                    
