@@ -1,6 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import requests
+import pandas as pd
 from datetime import datetime
 
 # Configuração da Página
@@ -11,24 +12,19 @@ SENHA_ACESSO = "aprender"
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 def get_best_model():
-    """Lista modelos disponíveis e retorna o primeiro válido."""
     try:
-        # Lista todos os modelos disponíveis na sua conta
         models = genai.list_models()
         for m in models:
-            # Filtra por modelos que podem gerar conteúdo
             if 'generateContent' in m.supported_generation_methods:
                 return genai.GenerativeModel(m.name)
         return None
-    except Exception as e:
-        st.error(f"Erro ao listar modelos: {e}")
-        return None
+    except: return None
 
-# --- FUNÇÃO DE BUSCA ROBUSTA ---
-def buscar_dados_mercado():
+# --- FUNÇÃO DE BUSCA PARA TABELA ---
+def buscar_dados_para_tabela():
     token = "T95TARf3vRa3adDmBwCJAZ"
     tickers = ["WIN1!", "WDO1!", "DI1F27", "PETR4", "VALE3", "B3SA3", "ES1!", "NQ1!", "VIX"]
-    resultados = []
+    dados_formatados = []
     
     for ticker in tickers:
         try:
@@ -38,12 +34,13 @@ def buscar_dados_mercado():
                 data = response.json()
                 if 'results' in data and len(data['results']) > 0:
                     res = data['results'][0]
-                    preco = res.get('regularMarketPrice', 0)
-                    var = res.get('regularMarketChangePercent', 0)
-                    resultados.append(f"{ticker}: R${preco:.2f} ({var:.2f}%)")
-        except:
-            pass
-    return "\n".join(resultados)
+                    dados_formatados.append({
+                        "Ativo": ticker,
+                        "Preço (R$)": res.get('regularMarketPrice', 0),
+                        "Variação (%)": res.get('regularMarketChangePercent', 0)
+                    })
+        except: continue
+    return pd.DataFrame(dados_formatados)
 
 # --- INTERFACE ---
 password = st.text_input("🔑 Digite a senha para liberar seu estudo:", type="password")
@@ -52,23 +49,28 @@ if password == SENHA_ACESSO:
     st.title("🎓 Mentor Institucional: Análise de Correlação")
     
     if st.button("🚀 Processar Análise de Correlação"):
-        model = get_best_model() # Busca o modelo disponível na hora do clique
+        model = get_best_model()
         
         if model is None:
-            st.error("Não foi possível encontrar um modelo de IA disponível na sua API Key.")
+            st.error("Erro ao conectar com a IA.")
         else:
             with st.spinner("Mesa de operações em conexão..."):
-                dados = buscar_dados_mercado()
+                df = buscar_dados_para_tabela()
                 
+                # --- EXIBIÇÃO DA TABELA ---
+                st.markdown("### 📋 Painel de Monitoramento")
+                st.table(df)
+                
+                # --- ANÁLISE IA ---
+                dados_texto = df.to_string(index=False)
                 prompt = f"""
-                Você é um Estrategista de Mesa. Analise a correlação entre estes ativos:
-                {dados}
+                Você é um Estrategista de Mesa. Analise os dados abaixo focando na correlação:
+                {dados_texto}
                 
                 Instruções:
-                1. WIN é consequência. Relacione com WDO, DI e ativos globais (ES1!).
-                2. Fluxo real vence. Analise pressão compradora/vendedora.
-                3. Como VIX e DI afetam o apetite ao risco?
-                4. Seja didático e profissional.
+                1. O WIN é consequência. Relacione com WDO, DI e ativos globais.
+                2. Identifique fluxos e pressões.
+                3. Seja didático e profissional.
                 """
                 
                 try:
@@ -79,4 +81,4 @@ if password == SENHA_ACESSO:
                     st.error(f"Erro ao gerar conteúdo: {e}")
 elif password != "":
     st.error("Senha incorreta.")
-                
+        
