@@ -2,33 +2,26 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 import pandas as pd
+import time
 
-# Configuração da Página
-st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
+st.set_page_config(page_title="Mentor Institucional", layout="wide")
 
-# --- SENHA E CONFIG ---
 SENHA_ACESSO = "aprender"
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-def get_best_model():
-    try:
-        models = genai.list_models()
-        for m in models:
-            if 'generateContent' in m.supported_generation_methods:
-                return genai.GenerativeModel(m.name)
-        return None
-    except: return None
+def get_model():
+    return genai.GenerativeModel('gemini-pro')
 
-# --- FUNÇÃO DE BUSCA PARA A SUA GRADE EXATA ---
-def buscar_dados_da_grade():
+# Lista completa da sua grade (11 ativos)
+TICKERS_GRADE = ["WIN1!", "WDO1!", "DI1N2029", "PETR4", "IMAT", "IFNC", "ES1!", "NQ1!", "B3SA3", "EWZ", "VIX"]
+
+def buscar_dados_completos():
     token = "T95TARf3vRa3adDmBwCJAZ"
-    # Lista extraída exatamente do seu print
-    tickers = ["WIN1!", "WDO1!", "DI1N2029", "PETR4", "IMAT", "IFNC", "ES1!", "NQ1!", "B3SA3", "EWZ", "VIX"]
     dados = []
     
-    for ticker in tickers:
+    for ticker in TICKERS_GRADE:
+        url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
         try:
-            url = f"https://brapi.dev/api/quote/{ticker}?token={token}"
             response = requests.get(url, timeout=5)
             if response.status_code == 200:
                 data = response.json()
@@ -39,45 +32,44 @@ def buscar_dados_da_grade():
                         "Preço": res.get('regularMarketPrice', 0),
                         "Var (%)": res.get('regularMarketChangePercent', 0)
                     })
+                else:
+                    dados.append({"Ativo": ticker, "Preço": "N/D", "Var (%)": "N/D"})
+            else:
+                dados.append({"Ativo": ticker, "Preço": "Erro API", "Var (%)": "Erro"})
         except:
-            continue
+            dados.append({"Ativo": ticker, "Preço": "Falha", "Var (%)": "Falha"})
+        
+        # Pausa estratégica para não estourar o limite de requisições por segundo
+        time.sleep(0.3) 
+        
     return pd.DataFrame(dados)
 
-# --- INTERFACE ---
 password = st.text_input("🔑 Digite a senha:", type="password")
 
 if password == SENHA_ACESSO:
-    st.title("🎓 Mentor Institucional: Visão Sistêmica")
+    st.title("🎓 Mentor Institucional: Visão Sistêmica Total")
     
-    if st.button("🚀 Processar Análise de Correlação"):
-        df = buscar_dados_da_grade()
-        
-        if df.empty:
-            st.error("Erro ao carregar dados da grade. Verifique a conexão com a API.")
-        else:
-            # 1. Exibe a tabela completa
-            st.markdown("### 📋 Painel de Monitoramento")
+    if st.button("🚀 Processar Análise de Correlação Completa"):
+        with st.spinner("Executando varredura da grade..."):
+            df = buscar_dados_completos()
             st.table(df)
             
-            # 2. Processa com a IA
-            model = get_best_model()
+            model = get_model()
+            # Forçamos a IA a considerar a grade completa na análise
             prompt = f"""
-            Você é um Estrategista de Mesa de Operações. 
-            Analise os dados abaixo focando na CORRELAÇÃO total da minha grade:
+            Você é um Estrategista de Mesa. Analise a correlação da GRADE COMPLETA:
             {df.to_string(index=False)}
             
-            REGRAS PARA A ANÁLISE:
-            1. WIN (WIN1!) é consequência. Explique a correlação com WDO1!, DI1N2029 e os índices globais (ES1!, NQ1!).
-            2. Fluxo Real: Como a variação dos pesos (PETR4, IMAT, IFNC, B3SA3) está impactando o índice?
-            3. Risco Global: Como o VIX e os futuros americanos (ES1!, NQ1!) estão ditando o tom do pregão?
-            4. Seja direto, técnico e didático. Conecte os pontos da minha grade de estudo.
+            Sua missão:
+            1. Considere a correlação entre todos os 11 ativos listados.
+            2. Se algum ativo estiver como 'N/D' ou 'Erro', desconsidere-o na conta, mas mantenha a análise macro com os ativos que carregaram.
+            3. Explique a dinâmica entre o fluxo de PETR4/B3SA3/IFNC e o comportamento do WIN1!.
+            4. Relacione o impacto do mercado externo (ES1!, NQ1!, VIX, EWZ) no DI1N2029 e consequentemente no WDO1!.
             """
             
-            with st.spinner("Analisando correlações..."):
-                try:
-                    response = model.generate_content(prompt)
-                    st.markdown("### 📊 Relatório de Correlação")
-                    st.write(response.text)
-                except Exception as e:
-                    st.error(f"Erro na IA: {e}")
+            try:
+                response = model.generate_content(prompt)
+                st.write(response.text)
+            except Exception as e:
+                st.error("Erro ao gerar a análise. Tente novamente.")
                     
