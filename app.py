@@ -10,21 +10,19 @@ st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
 SENHA_ACESSO = "aprender"
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-def get_model():
-    """Busca o modelo disponível e evita o erro 404."""
+def get_best_model():
+    """Lista modelos disponíveis e retorna o primeiro válido."""
     try:
-        # Tenta listar os modelos para ver o que está disponível na sua conta
+        # Lista todos os modelos disponíveis na sua conta
         models = genai.list_models()
         for m in models:
-            if 'gemini-1.5' in m.name and 'generateContent' in m.supported_generation_methods:
+            # Filtra por modelos que podem gerar conteúdo
+            if 'generateContent' in m.supported_generation_methods:
                 return genai.GenerativeModel(m.name)
-        # Se não achar o 1.5, tenta o 'gemini-pro' padrão
-        return genai.GenerativeModel('gemini-pro')
+        return None
     except Exception as e:
         st.error(f"Erro ao listar modelos: {e}")
         return None
-
-model = get_model()
 
 # --- FUNÇÃO DE BUSCA ROBUSTA ---
 def buscar_dados_mercado():
@@ -54,8 +52,10 @@ if password == SENHA_ACESSO:
     st.title("🎓 Mentor Institucional: Análise de Correlação")
     
     if st.button("🚀 Processar Análise de Correlação"):
+        model = get_best_model() # Busca o modelo disponível na hora do clique
+        
         if model is None:
-            st.error("Não foi possível conectar ao modelo de IA. Verifique sua chave.")
+            st.error("Não foi possível encontrar um modelo de IA disponível na sua API Key.")
         else:
             with st.spinner("Mesa de operações em conexão..."):
                 dados = buscar_dados_mercado()
@@ -65,9 +65,10 @@ if password == SENHA_ACESSO:
                 {dados}
                 
                 Instruções:
-                1. O WIN é consequência do fluxo e dos ativos correlacionados.
-                2. Relacione o comportamento do WDO, DI, S&P500 (ES1!) e VIX com o mercado brasileiro.
-                3. Seja didático. O usuário estuda correlação. Conecte os pontos.
+                1. WIN é consequência. Relacione com WDO, DI e ativos globais (ES1!).
+                2. Fluxo real vence. Analise pressão compradora/vendedora.
+                3. Como VIX e DI afetam o apetite ao risco?
+                4. Seja didático e profissional.
                 """
                 
                 try:
@@ -78,4 +79,4 @@ if password == SENHA_ACESSO:
                     st.error(f"Erro ao gerar conteúdo: {e}")
 elif password != "":
     st.error("Senha incorreta.")
-        
+                
