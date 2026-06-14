@@ -4,86 +4,109 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from PIL import Image
+
 # Configuração da Página
-st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
+st.set_page_config(page_title="Mesa Institucional WIN", layout="wide")
+
 # --- CONFIGURAÇÃO API ---
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+
 def get_model():
-    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    prioridade = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro']
+    # Configuração de segurança conforme solicitado
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+    
+    # Lista de modelos solicitada (priorizando 2.5 e 1.5-pro)
+    prioridade = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro']
+    
     for p in prioridade:
-        if p in models: return genai.GenerativeModel(p)
-    return genai.GenerativeModel(models[0])
+        try:
+            return genai.GenerativeModel(p, safety_settings=safety_settings)
+        except:
+            continue
+    return genai.GenerativeModel('gemini-1.5-pro', safety_settings=safety_settings)
+
 model = get_model()
-# --- LÓGICA PRINCIPAL ---
-# Gerenciamento de Memória
-if 'historico_data' not in st.session_state: st.session_state.historico_data = datetime.now().date()
-if 'historico_analises' not in st.session_state: st.session_state.historico_analises = []
-if st.session_state.historico_data != datetime.now().date():
-    st.session_state.historico_analises = []
-    st.session_state.historico_data = datetime.now().date()
+
+# --- PROMPT MESTRE ---
 PROMPT_SISTEMA = """
-Você é um Estrategista de Mesa de Operações e um Mestre em Educação Financeira. 
-Sua missão é realizar a leitura institucional do WIN, priorizando o aprendizado do usuário.
-Protocolo: (Contexto, Motores, Carteira, Fluxo, Estado Final, Modo Professor Didático).
-REGRAS: 
-1. WIN é consequência. Fluxo real sempre vence.
-2. Identifique se a análise está sendo feita com o mercado em aberto ou em fechamento, e ajuste o peso do fluxo conforme o horário.
-3. Utilize os dados do print para justificar a correlação macro.
-HISTÓRICO DO PREGÃO: {historico}
+Você é um Analista Institucional especializado em fluxo, correlação e dominância.
+Sua função é explicar a dinâmica de força entre ativos e o impacto no WIN.
+REGRA MESTRA: WIN é consequência. Fluxo real sempre vence.
+
+ANALISE OS ATIVOS: WIN, WDO, DI, ES, NQ, VIX, IFNC, IMAT, PETR4, B3SA3, EWZ.
+(Se não identificado no print, informe "Não identificado no print").
+
+ESTRUTURA OBRIGATÓRIA DA RESPOSTA:
+
+CAPÍTULO 1 – CONTEXTO DO DIA
+- Eventos
+- Notícias
+- Ambiente predominante
+- Conclusão
+
+CAPÍTULO 2 – PAINEL DE FORÇAS
+(Para cada ativo: Ativo, Direção, Força, Impacto no WIN)
+Classificar: 🔴 Dominância Forte, 🟠 Dominância Moderada, ⚪ Neutro.
+
+CAPÍTULO 3 – HIERARQUIA DE DOMINÂNCIA
+- Motor Principal, Secundário, Terciário
+- Direção, Intensidade, Dominância estimada, Justificativa.
+
+CAPÍTULO 4 – TRANSMISSÃO DE FLUXO
+- Quem lidera, ajuda, atrapalha, ignorado.
+- Absorção, conflito, transferência de liderança.
+
+CAPÍTULO 5 – CORRELAÇÕES
+(DI, WDO, EWZ, IFNC, IMAT, ES/NQ x WIN)
+Classificar: Muito Forte, Forte, Moderada, Fraca, Muito Fraca.
+Informar: Correlação Dominante, Em Transferência, Ignorada.
+
+CAPÍTULO 6 – QUALIDADE DO CENÁRIO
+- Classificação (Excelente a Péssima)
+- Convicção (0-100)
+
+CAPÍTULO 7 – RESUMO OPERACIONAL
+- Viés Atual (Compra/Venda/Neutro)
+- Convicção, Motor Dominante, Motor Ignorado, Principal Correlação, Principal Risco.
+
+CAPÍTULO 8 – MODO PROFESSOR
+- O que moveu o mercado, Erro comum do iniciante, O que observar primeiro, Principal lição institucional.
+
+REGRAS ABSOLUTAS: Não descrever individualmente, focar em dominância/fluxo. Explicar sempre o WIN.
 """
-@st.cache_data(ttl=3600)
+
+@st.cache_data(ttl=1800)
 def puxar_calendario():
     try:
         url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
         root = ET.fromstring(response.content)
         hoje_dt = datetime.now()
         eventos = [f"• {e.find('time').text} ({e.find('country').text}): {e.find('title').text}" 
-                   for e in root.findall('event') if e.find('date').text == hoje_dt.strftime("%m-%d-%Y") and e.find('impact').text in ['High', 'Medium']]
-        return f"### 📅 Agenda: {hoje_dt.strftime('%d/%m/%Y')}\n\n" + "\n".join(eventos) if eventos else "Sem eventos."
-    except: return "### 📅 Calendário indisponível."
-st.title("🎓 Mentor Institucional de Fluxo")
-with st.expander("📖 Guia: Como configurar sua Grade de Ativos"):
-    st.markdown("""
-    PASSO A PASSO:
-    1. Crie uma nova lista (carteira) no seu TradingView.
-    2. Adicione os ativos abaixo em um único print de sua grade completa.
-    
+                   for e in root.findall('event') if e.find('date').text == hoje_dt.strftime("%m-%d-%Y")]
+        return "\n".join(eventos) if eventos else "Sem eventos hoje."
+    except: return "Calendário indisponível."
 
-| Ativo | Função |
-| :--- | :--- |
-| [WIN1!](https://br.tradingview.com/symbols/BMFBOVESPA-WIN1!/) | Índice Futuro |
-| [WDO1!](https://br.tradingview.com/symbols/BMFBOVESPA-WDO1!/) | Dólar |
-| [DI1N2029](https://br.tradingview.com/symbols/BMFBOVESPA-DI11!/?contract=DI1N2029) | Juros |
-| [PETR4](https://br.tradingview.com/symbols/BMFBOVESPA-PETR4/) | Commodities |
-| [IMAT](https://br.tradingview.com/symbols/BMFBOVESPA-IMAT/) | Materiais |
-| [IFNC](https://br.tradingview.com/symbols/BMFBOVESPA-IFNC/) | Bancos |
-| [ES1!](https://br.tradingview.com/symbols/CME_MINI-ES1!/) | S&P 500 |
-| [NQ1!](https://br.tradingview.com/symbols/CME_MINI-NQ1!/) | Nasdaq |
-| [B3SA3](https://br.tradingview.com/symbols/BMFBOVESPA-B3SA3/) | B3 |
-| [EWZ](https://br.tradingview.com/symbols/AMEX-EWZ/) | ETF Brasil |
-| [VIX](https://br.tradingview.com/symbols/TVC-VIX/) | Volatilidade |
+# --- INTERFACE ---
+st.title("🎓 Mesa Institucional WIN")
+st.info(f"📅 Agenda: {puxar_calendario()}")
 
-""")
-st.info(puxar_calendario())
-uploaded_file = st.file_uploader("Suba o print:", type=['jpg', 'png'])
+uploaded_file = st.file_uploader("Suba o print do TradingView:", type=['jpg', 'png'])
+
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, use_column_width=True)
     
-    if st.button("🚀 Processar Análise Evolutiva"):
-        with st.spinner("Conectando variáveis macro..."):
-            hist_texto = "\n".join(st.session_state.historico_analises)
-            full_prompt = PROMPT_SISTEMA.format(historico=hist_texto) + f"\nAGENDA: {puxar_calendario()}"
-            
+    if st.button("🚀 Executar Análise Institucional"):
+        with st.spinner("Decodificando dominância..."):
             try:
-                response = model.generate_content([full_prompt, image])
-                st.markdown("### 📊 Relatório Institucional")
+                response = model.generate_content([PROMPT_SISTEMA, image])
+                st.markdown("---")
                 st.markdown(response.text)
-                st.session_state.historico_analises.append(response.text)
             except Exception as e:
-                st.error(f"Erro: {e}")
-if st.sidebar.button("🗑️ Limpar Pregão Atual"):
-    st.session_state.historico_analises = []
-    st.rerun()
+                st.error(f"Erro na Mesa Institucional: {e}")
