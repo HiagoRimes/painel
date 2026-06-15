@@ -10,8 +10,11 @@ from PIL import Image
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Mesa Institucional WIN", layout="wide")
 
-# Inicialização com a nova biblioteca (substitui o antigo genai.configure)
-client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
+# Inicialização limpa, forçando o uso da v1 (sem beta)
+client = genai.Client(
+    api_key=st.secrets["GOOGLE_API_KEY"],
+    http_options={'api_version': 'v1'}
+)
 
 SYSTEM_INST = """Você é uma Mesa Institucional de Operações.
 Analise prints do TradingView focado em WIN, WDO, DI, ES, NQ, VIX, IFNC, IMAT, PETR4, B3SA3, EWZ.
@@ -70,7 +73,7 @@ if file and st.button("🚀 Executar Análise"):
             hist = "\n".join(st.session_state.historico)
             prompt_var = f"{SYSTEM_INST}\n\nHORÁRIO: {periodo} | AGENDA: {puxar_calendario()} | HISTÓRICO: {hist}"
             
-            # Chamada via nova API
+            # Chamada direta forçando o modelo 'gemini-1.5-flash' sem o caminho 'models/'
             res = client.models.generate_content(
                 model="gemini-1.5-flash",
                 contents=[prompt_var, img]
@@ -82,8 +85,8 @@ if file and st.button("🚀 Executar Análise"):
                 if nova_memoria:
                     adicionar_historico(nova_memoria)
             else:
-                st.warning("Análise bloqueada ou vazia.")
+                st.warning("Análise vazia.")
                     
         except Exception as e:
             st.error(f"Falha técnica: {str(e)}")
-            
+                      
