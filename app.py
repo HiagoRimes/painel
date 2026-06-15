@@ -2,15 +2,17 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 import xml.etree.ElementTree as ET
+import re
+import os
 from datetime import datetime
 from PIL import Image
-import os
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Mesa Institucional WIN", layout="wide")
 
+# Configuração crítica para tokens AQ organizacionais
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
-genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+genai.configure(api_key=os.environ["GOOGLE_API_KEY"], transport='rest')
 
 SYSTEM_INST = """Você é uma Mesa Institucional de Operações.
 Analise prints do TradingView focado em WIN, WDO, DI, ES, NQ, VIX, IFNC, IMAT, PETR4, B3SA3, EWZ.
@@ -26,8 +28,8 @@ MOTOR=[Ativo]
 
 @st.cache_resource
 def get_model():
-    # Alterado para 'gemini-pro' para máxima compatibilidade em contas organizacionais
-    return genai.GenerativeModel('gemini-pro')
+    # Modelo padrão flash para compatibilidade
+    return genai.GenerativeModel('gemini-1.5-flash')
 
 model = get_model()
 
@@ -76,7 +78,6 @@ if file and st.button("🚀 Executar Análise"):
             hist = "\n".join(st.session_state.historico)
             prompt_var = f"{SYSTEM_INST}\n\nHORÁRIO: {periodo} | AGENDA: {puxar_calendario()} | HISTÓRICO: {hist}"
             
-            # Chamada direta
             res = model.generate_content([prompt_var, img])
             
             if res.text:
@@ -88,10 +89,4 @@ if file and st.button("🚀 Executar Análise"):
                 st.warning("Análise bloqueada ou vazia.")
                     
         except Exception as e:
-            if "ResourceExhausted" in str(e):
-                st.error("🚨 Cota excedida! Aguarde alguns instantes.")
-            elif "401" in str(e):
-                st.error("🚨 Token expirado! Atualize seu token AQ.")
-            else:
-                st.error(f"Falha técnica: {str(e)}")
-        
+            st.error(f"Falha técnica: {str(e)}")
