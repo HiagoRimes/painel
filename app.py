@@ -95,4 +95,4 @@ if file and st.button("🚀 Executar Análise"):
                 st.error("🚨 Token expirado! Atualize seu token AQ.")
             else:
                 st.error(f"Falha técnica: {str(e)}")
-        
+                
