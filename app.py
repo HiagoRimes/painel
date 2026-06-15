@@ -4,13 +4,17 @@ from google.api_core import exceptions
 import requests
 import xml.etree.ElementTree as ET
 import re
+import os
 from datetime import datetime
 from PIL import Image
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Mesa Institucional WIN", layout="wide")
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+
+# Força o SDK a ler a chave do seu secrets via ambiente
+os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
+genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
 SYSTEM_INST = """Você é uma Mesa Institucional de Operações.
 Analise prints do TradingView focado em WIN, WDO, DI, ES, NQ, VIX, IFNC, IMAT, PETR4, B3SA3, EWZ.
@@ -26,11 +30,12 @@ MOTOR=[Ativo]
 
 @st.cache_resource
 def get_model():
-    return genai.GenerativeModel("gemini-2.0-flash", system_instruction=SYSTEM_INST)
+    # Removido system_instruction para evitar erro de permissão no token AQ
+    return genai.GenerativeModel("gemini-2.0-flash")
 
 model = get_model()
 
-# --- ESTADO (Serialização Sênior) ---
+# --- ESTADO ---
 if 'historico' not in st.session_state: 
     st.session_state.historico = []
 
@@ -63,7 +68,7 @@ def processar_memoria(texto):
     match = re.search(r"MEMORIA:\s*VIES=(.*?)\s*CONVICCAO=([0-9.,%]+)\s*MOTOR=(.*)$", texto, re.MULTILINE | re.IGNORECASE)
     return f"{match.group(1).strip()} | {match.group(2).strip()} | {match.group(3).strip()}" if match else None
 
-# --- RETRY POLICY (Proteção contra ResourceExhausted) ---
+# --- RETRY POLICY ---
 @retry(
     stop=stop_after_attempt(3), 
     wait=wait_exponential(multiplier=2, min=4, max=20),
@@ -82,7 +87,9 @@ if file and st.button("🚀 Executar Análise"):
         try:
             img = preparar_imagem(file)
             hist = "\n".join(st.session_state.historico)
-            prompt_var = f"HORÁRIO: {periodo} | AGENDA: {puxar_calendario()} | HISTÓRICO: {hist}"
+            
+            # Instrução de sistema incorporada ao prompt para contornar restrição do token AQ
+            prompt_var = f"{SYSTEM_INST}\n\nHORÁRIO: {periodo} | AGENDA: {puxar_calendario()} | HISTÓRICO: {hist}"
             
             res = gerar_analise_segura(prompt_var, img)
             
@@ -95,10 +102,10 @@ if file and st.button("🚀 Executar Análise"):
                 st.warning(f"Análise limitada: {res.candidates[0].finish_reason.name if res.candidates else 'Erro crítico'}")
                     
         except Exception as e:
-            if "ResourceExhausted" in str(e):
-                st.error("🚨 Limite de cota atingido! Aguarde alguns instantes ou verifique seu plano no Google AI Studio.")
-            elif "finish_reason" in str(e).lower() or "safety" in str(e).lower():
-                st.warning("A análise foi bloqueada por diretrizes de segurança.")
+            if "401" in str(e) or "unauthorized" in str(e).lower():
+                st.error("🚨 Token expirado! Capture um novo token AQ no F12 do navegador e atualize no secrets.")
+            elif "ResourceExhausted" in str(e):
+                st.error("🚨 Limite de cota atingido!")
             else:
-                st.error(f"Falha técnica na mesa: {str(e)}")
-    
+                st.error(f"Falha técnica: {str(e)}")
+        
