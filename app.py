@@ -2,44 +2,27 @@ import streamlit as st
 import google.generativeai as genai
 import requests
 import xml.etree.ElementTree as ET
-import re
-import os
 from datetime import datetime
 from PIL import Image
+import os
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Mesa Institucional WIN", layout="wide")
 
+# Configuração simples como no código antigo
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
-genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-SYSTEM_INST = """Você é uma Mesa Institucional de Operações.
-Analise prints do TradingView focado em WIN, WDO, DI, ES, NQ, VIX, IFNC, IMAT, PETR4, B3SA3, EWZ.
-REGRAS: 
-- Identifique divergências entre WIN e motores. Explique o motivo.
-- Quebras de correlação, absorções e transferências de liderança devem ser explicadas tecnicamente.
-- Ao final da análise, OBRIGATORIAMENTE termine a resposta com o bloco:
-MEMORIA:
-VIES=[Compra/Venda/Neutro]
-CONVICCAO=[0-100]
-MOTOR=[Ativo]
-"""
-
-@st.cache_resource
+# Função simples como no código antigo
 def get_model():
-    # Usamos o nome simplificado para evitar erro de versão da API (v1beta)
-    return genai.GenerativeModel('gemini-1.5-flash-latest')
+    # Sem list_models(), sem v1beta, sem filtro. Apenas instanciar.
+    return genai.GenerativeModel('gemini-1.5-flash')
 
 model = get_model()
 
 # --- ESTADO ---
 if 'historico' not in st.session_state: 
     st.session_state.historico = []
-
-def adicionar_historico(item):
-    if len(st.session_state.historico) >= 3:
-        st.session_state.historico.pop(0)
-    st.session_state.historico.append(item)
 
 # --- UTILS ---
 @st.cache_data(ttl=1800)
@@ -54,45 +37,34 @@ def puxar_calendario():
         return "\n".join(evts) if evts else "Sem eventos macro."
     except: return "Agenda indisponível."
 
-def preparar_imagem(file):
-    img = Image.open(file)
-    if img.width < 500 or img.height < 400:
-        raise ValueError("Resolução insuficiente.")
-    img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
-    return img.convert("RGB") if img.mode != "RGB" else img
-
-def processar_memoria(texto):
-    match = re.search(r"MEMORIA:\s*VIES=(.*?)\s*CONVICCAO=([0-9.,%]+)\s*MOTOR=(.*)$", texto, re.MULTILINE | re.IGNORECASE)
-    return f"{match.group(1).strip()} | {match.group(2).strip()} | {match.group(3).strip()}" if match else None
-
 # --- INTERFACE ---
 st.title("🎓 Mesa Institucional WIN")
-periodo = "Pré-mercado" if datetime.now().hour < 9 else "Mercado aberto" if datetime.now().hour < 17 else "Pós-fechamento"
-file = st.file_uploader("Upload print do TradingView:", type=['jpg', 'png'])
+file = st.file_uploader("Upload print:", type=['jpg', 'png'])
 
 if file and st.button("🚀 Executar Análise"):
-    with st.spinner("Analisando fluxo institucional..."):
+    with st.spinner("Conectando..."):
         try:
-            img = preparar_imagem(file)
-            hist = "\n".join(st.session_state.historico)
-            prompt_var = f"{SYSTEM_INST}\n\nHORÁRIO: {periodo} | AGENDA: {puxar_calendario()} | HISTÓRICO: {hist}"
+            image = Image.open(file)
             
-            # Chamada direta
-            res = model.generate_content([prompt_var, img])
+            # Prompt unificado para não precisar de system_instruction
+            prompt = f"""
+            Você é uma Mesa Institucional de Operações.
+            Analise este print focado em WIN, WDO, DI, ES, NQ, VIX.
+            AGENDA: {puxar_calendario()}
+            HISTÓRICO: {str(st.session_state.historico[-3:])}
             
-            if res.text:
-                st.markdown(res.text)
-                nova_memoria = processar_memoria(res.text)
-                if nova_memoria:
-                    adicionar_historico(nova_memoria)
-            else:
-                st.warning("Análise bloqueada ou vazia.")
-                    
+            Termine com:
+            MEMORIA: VIES=[C/V/N] CONVICCAO=[0-100] MOTOR=[Ativo]
+            """
+            
+            # Chamada direta e simples
+            response = model.generate_content([prompt, image])
+            
+            st.markdown("### 📊 Relatório")
+            st.markdown(response.text)
+            st.session_state.historico.append(response.text)
+            
         except Exception as e:
-            if "ResourceExhausted" in str(e):
-                st.error("🚨 Cota excedida! Aguarde alguns instantes.")
-            elif "401" in str(e):
-                st.error("🚨 Token expirado! Atualize seu token AQ.")
-            else:
-                st.error(f"Falha técnica: {str(e)}")
-                
+            st.error(f"Erro: {e}")
+            st.write("Dica: Se o erro persistir, o token AQ expirou. Capture um novo.")
+            
