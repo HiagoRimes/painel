@@ -27,7 +27,8 @@ MOTOR=[Ativo]
 
 @st.cache_resource
 def get_model():
-    return genai.GenerativeModel('gemini-1.5-flash')
+    # Usamos o nome simplificado para evitar erro de versão da API (v1beta)
+    return genai.GenerativeModel('gemini-1.5-flash-latest')
 
 model = get_model()
 
@@ -76,10 +77,10 @@ if file and st.button("🚀 Executar Análise"):
             hist = "\n".join(st.session_state.historico)
             prompt_var = f"{SYSTEM_INST}\n\nHORÁRIO: {periodo} | AGENDA: {puxar_calendario()} | HISTÓRICO: {hist}"
             
-            # Chamada direta sem retry para evitar o erro de processamento paralelo
+            # Chamada direta
             res = model.generate_content([prompt_var, img])
             
-            if res.candidates and res.candidates[0].finish_reason == genai.types.FinishReason.STOP:
+            if res.text:
                 st.markdown(res.text)
                 nova_memoria = processar_memoria(res.text)
                 if nova_memoria:
@@ -89,9 +90,9 @@ if file and st.button("🚀 Executar Análise"):
                     
         except Exception as e:
             if "ResourceExhausted" in str(e):
-                st.error("🚨 Cota excedida! O Google limitou suas requisições neste projeto. Aguarde alguns minutos ou use outra chave.")
+                st.error("🚨 Cota excedida! Aguarde alguns instantes.")
             elif "401" in str(e):
                 st.error("🚨 Token expirado! Atualize seu token AQ.")
             else:
                 st.error(f"Falha técnica: {str(e)}")
-            
+        
