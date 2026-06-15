@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import requests
 import xml.etree.ElementTree as ET
 import re
@@ -10,9 +10,8 @@ from PIL import Image
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Mesa Institucional WIN", layout="wide")
 
-# Configuração de transporte REST para tokens organizacionais
-os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
-genai.configure(api_key=os.environ["GOOGLE_API_KEY"], transport='rest')
+# Inicialização com a nova biblioteca (substitui o antigo genai.configure)
+client = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
 
 SYSTEM_INST = """Você é uma Mesa Institucional de Operações.
 Analise prints do TradingView focado em WIN, WDO, DI, ES, NQ, VIX, IFNC, IMAT, PETR4, B3SA3, EWZ.
@@ -25,13 +24,6 @@ VIES=[Compra/Venda/Neutro]
 CONVICCAO=[0-100]
 MOTOR=[Ativo]
 """
-
-@st.cache_resource
-def get_model():
-    # Removido 'models/' para evitar conflito de roteamento no endpoint v1beta
-    return genai.GenerativeModel('gemini-1.5-flash')
-
-model = get_model()
 
 # --- ESTADO ---
 if 'historico' not in st.session_state: 
@@ -78,8 +70,11 @@ if file and st.button("🚀 Executar Análise"):
             hist = "\n".join(st.session_state.historico)
             prompt_var = f"{SYSTEM_INST}\n\nHORÁRIO: {periodo} | AGENDA: {puxar_calendario()} | HISTÓRICO: {hist}"
             
-            # Chamada forçada ao modelo
-            res = model.generate_content([prompt_var, img])
+            # Chamada via nova API
+            res = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=[prompt_var, img]
+            )
             
             if res.text:
                 st.markdown(res.text)
@@ -90,6 +85,5 @@ if file and st.button("🚀 Executar Análise"):
                 st.warning("Análise bloqueada ou vazia.")
                     
         except Exception as e:
-            st.error(f"Falha na requisição: {str(e)}")
-            st.write("Dica: Se o erro persistir, o identificador do modelo pode estar bloqueado para esta chave.")
+            st.error(f"Falha técnica: {str(e)}")
             
