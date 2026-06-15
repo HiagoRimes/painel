@@ -12,7 +12,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Mesa Institucional WIN", layout="wide")
 
-# Força o SDK a ler a chave do secrets
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
@@ -30,8 +29,13 @@ MOTOR=[Ativo]
 
 @st.cache_resource
 def get_model():
-    # Usando 1.5-flash pela maior estabilidade de cota no nível gratuito
-    return genai.GenerativeModel("gemini-1.5-flash")
+    # Alterado para buscar a lista de modelos disponíveis e pegar o primeiro compatível
+    # Isso evita o erro 404 de modelo não encontrado
+    model_list = genai.list_models()
+    for m in model_list:
+        if 'generateContent' in m.supported_generation_methods and 'flash' in m.name:
+            return genai.GenerativeModel(m.name)
+    return genai.GenerativeModel('gemini-1.5-flash')
 
 model = get_model()
 
@@ -61,14 +65,14 @@ def preparar_imagem(file):
     img = Image.open(file)
     if img.width < 500 or img.height < 400:
         raise ValueError("Resolução insuficiente.")
-    img.thumbnail((1024, 1024), Image.Resampling.LANCZOS) # Redução leve para economizar cota
+    img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
     return img.convert("RGB") if img.mode != "RGB" else img
 
 def processar_memoria(texto):
     match = re.search(r"MEMORIA:\s*VIES=(.*?)\s*CONVICCAO=([0-9.,%]+)\s*MOTOR=(.*)$", texto, re.MULTILINE | re.IGNORECASE)
     return f"{match.group(1).strip()} | {match.group(2).strip()} | {match.group(3).strip()}" if match else None
 
-# --- RETRY POLICY (Aumentada para respeitar limites de cota) ---
+# --- RETRY POLICY ---
 @retry(
     stop=stop_after_attempt(5), 
     wait=wait_exponential(multiplier=5, min=10, max=40),
@@ -88,7 +92,6 @@ if file and st.button("🚀 Executar Análise"):
             img = preparar_imagem(file)
             hist = "\n".join(st.session_state.historico)
             
-            # Incorporação da instrução no prompt para evitar erro 401/permissão
             prompt_var = f"{SYSTEM_INST}\n\nHORÁRIO: {periodo} | AGENDA: {puxar_calendario()} | HISTÓRICO: {hist}"
             
             res = gerar_analise_segura(prompt_var, img)
@@ -99,13 +102,7 @@ if file and st.button("🚀 Executar Análise"):
                 if nova_memoria:
                     adicionar_historico(nova_memoria)
             else:
-                st.warning("Análise bloqueada ou incompleta.")
+                st.warning("Análise bloqueada.")
                     
         except Exception as e:
-            if "ResourceExhausted" in str(e):
-                st.error("🚨 Cota excedida! O Google limitou suas requisições temporariamente. Aguarde 1 minuto e tente novamente.")
-            elif "401" in str(e):
-                st.error("🚨 Token expirado! Atualize seu token AQ no secrets.")
-            else:
-                st.error(f"Falha técnica: {str(e)}")
-    
+            st.error(f"Falha técnica: {str(e)}")
