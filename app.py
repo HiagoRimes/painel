@@ -10,7 +10,7 @@ from PIL import Image
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Mesa Institucional WIN", layout="wide")
 
-# Configuração crítica para tokens AQ organizacionais
+# Configuração de transporte REST para tokens organizacionais
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"], transport='rest')
 
@@ -28,7 +28,7 @@ MOTOR=[Ativo]
 
 @st.cache_resource
 def get_model():
-    # Modelo padrão flash para compatibilidade
+    # Removido 'models/' para evitar conflito de roteamento no endpoint v1beta
     return genai.GenerativeModel('gemini-1.5-flash')
 
 model = get_model()
@@ -78,6 +78,7 @@ if file and st.button("🚀 Executar Análise"):
             hist = "\n".join(st.session_state.historico)
             prompt_var = f"{SYSTEM_INST}\n\nHORÁRIO: {periodo} | AGENDA: {puxar_calendario()} | HISTÓRICO: {hist}"
             
+            # Chamada forçada ao modelo
             res = model.generate_content([prompt_var, img])
             
             if res.text:
@@ -89,4 +90,6 @@ if file and st.button("🚀 Executar Análise"):
                 st.warning("Análise bloqueada ou vazia.")
                     
         except Exception as e:
-            st.error(f"Falha técnica: {str(e)}")
+            st.error(f"Falha na requisição: {str(e)}")
+            st.write("Dica: Se o erro persistir, o identificador do modelo pode estar bloqueado para esta chave.")
+            
