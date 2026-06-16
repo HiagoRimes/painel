@@ -1,12 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
-import requests
-import xml.etree.ElementTree as ET
 from datetime import datetime
 from PIL import Image
 
 # ---------------------------
-# CONFIGURAÇÃO STREAMLIT
+# CONFIG STREAMLIT
 # ---------------------------
 st.set_page_config(page_title="Mentor Institucional WIN", layout="wide")
 st.set_option('client.toolbarMode', 'minimal')
@@ -24,10 +22,11 @@ def check_password():
 
     if password != "":
         st.error("Senha incorreta.")
+
     return False
 
 # ---------------------------
-# GEMINI API
+# GEMINI
 # ---------------------------
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
@@ -51,7 +50,7 @@ def get_model():
 
         return genai.GenerativeModel(models[0])
 
-    except Exception:
+    except:
         return genai.GenerativeModel("models/gemini-1.5-flash")
 
 model = get_model()
@@ -79,66 +78,62 @@ Faça leitura institucional do WIN.
 Estrutura:
 Contexto, Motores, Carteira, Fluxo, Estado Final, Modo Professor.
 
-Regra:
-WIN é consequência do fluxo.
+Regra central:
+WIN é consequência do fluxo institucional.
 
 Histórico:
 {historico}
 """
 
 # ---------------------------
-# CALENDÁRIO
+# CALENDÁRIO PRÓPRIO (SEM API)
 # ---------------------------
-@st.cache_data(ttl=3600)
 def puxar_calendario():
-    try:
-        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
-        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+    hoje = datetime.now()
 
-        root = ET.fromstring(response.content)
-        hoje = datetime.now()
+    eventos = [
+        "🇧🇷 COPOM - Decisão de Juros",
+        "🇧🇷 IPCA - Inflação Brasil",
+        "🇧🇷 PIB Brasil",
+        "🇺🇸 FOMC - Juros EUA",
+        "🇺🇸 CPI - Inflação EUA",
+        "🇺🇸 NFP - Payroll EUA",
+        "🇺🇸 PCE - Inflação EUA",
+        "🌍 VIX - Volatilidade Global",
+        "🌍 DXY - Índice do Dólar"
+    ]
 
-        eventos = []
-
-        for e in root.findall("event"):
-            if e.find("date").text == hoje.strftime("%m-%d-%Y"):
-                if e.find("impact").text in ["High", "Medium"]:
-                    eventos.append(
-                        f"• {e.find('time').text} ({e.find('country').text}): {e.find('title').text}"
-                    )
-
-        if eventos:
-            return "### 📅 Agenda\n\n" + "\n".join(eventos)
-
-        return "### 📅 Agenda: sem eventos relevantes hoje."
-
-    except:
-        return "### 📅 Calendário indisponível"
+    return (
+        f"### 📅 Calendário institucional (WIN)\n\n"
+        + "\n".join(f"• {e}" for e in eventos)
+    )
 
 # ---------------------------
 # UI
 # ---------------------------
 st.title("🎓 Mentor Institucional WIN")
 
-with st.expander("📖 Guia"):
+with st.expander("📖 Guia de uso"):
     st.markdown("""
-Monte sua grade no TradingView e envie um print único contendo:
+Monte sua grade no TradingView com:
 
-- WIN1!, WDO1!, DI1N2029
-- PETR4, IMAT, IFNC
-- ES1!, NQ1!, VIX
+- WIN1!, WDO1!, DI1N2029  
+- PETR4, IMAT, IFNC  
+- ES1!, NQ1!, VIX  
+
+Envie um print único da grade completa.
 """)
 
 st.info(puxar_calendario())
 
 # ---------------------------
-# AUTENTICAÇÃO
+# LOGIN
 # ---------------------------
 if not check_password():
     st.stop()
 
 # ---------------------------
-# UPLOAD + FLUXO SEGURO
+# UPLOAD
 # ---------------------------
 uploaded_file = st.file_uploader("Suba o print:", type=["jpg", "png"])
 
@@ -151,13 +146,13 @@ if uploaded_file is not None:
 
     if processar:
 
-        with st.spinner("Processando leitura institucional..."):
+        with st.spinner("Analisando fluxo institucional..."):
 
             historico = "\n".join(st.session_state.historico_analises)
 
             full_prompt = (
                 PROMPT_SISTEMA.format(historico=historico)
-                + "\n\nAGENDA:\n"
+                + "\n\nAGENDA MACRO:\n"
                 + puxar_calendario()
             )
 
@@ -173,7 +168,7 @@ if uploaded_file is not None:
                 st.error(f"Erro na análise: {e}")
 
 # ---------------------------
-# LIMPEZA SEGURA
+# LIMPAR HISTÓRICO
 # ---------------------------
 if st.sidebar.button("🗑️ Limpar histórico"):
     st.session_state.historico_analises = []
