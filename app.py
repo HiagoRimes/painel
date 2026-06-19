@@ -4,6 +4,7 @@ import google.generativeai as genai
 import requests
 import json
 from datetime import datetime
+from fpdf import FPDF
 
 # --- CONFIGURAÇÃO VISUAL PREMIUM DA PÁGINA ---
 st.set_page_config(
@@ -41,6 +42,13 @@ st.markdown("""
         border-left: 5px solid #009c3b;
         margin-bottom: 15px;
     }
+    /* Estilização para fazer o st.radio de navegação parecer abas elegantes */
+    div[data-testid="stHorizontalBlock"] {
+        background-color: #f0f2f6;
+        padding: 8px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -56,18 +64,15 @@ if "GOOGLE_API_KEY" in st.secrets:
 else:
     api_configurada = False
 
-# Método de resolução dinâmica do modelo com Google Search Grounding habilitado
 def get_model():
     if not api_configurada:
         return None
     try:
-        # Habilita a ferramenta de busca oficial 'google_search_retrieval'
         return genai.GenerativeModel(
             model_name='models/gemini-1.5-flash',
             tools='google_search_retrieval'
         )
     except Exception:
-        # Fallback sem busca se falhar
         return genai.GenerativeModel('models/gemini-1.5-flash')
 
 if api_configurada:
@@ -98,8 +103,61 @@ def salvar_banco_dados(novos_dados):
     except Exception as e:
         st.sidebar.warning(f"Erro de sincronização: {e}")
 
+# --- GERADOR DE RELATÓRIO EM PDF ---
+def gerar_pdf_bolao(nome_grupo, confronto, apostas):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Configurações de página e fontes padrão Helvetica
+    pdf.set_text_color(0, 156, 59) # Verde Seleção
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.cell(0, 15, "BOLAO DA SELECAO BRASILEIRA", ln=True, align="C")
+    
+    pdf.set_text_color(0, 39, 118) # Azul Cruzeiro
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, f"Grupo de Apostas: {nome_grupo}", ln=True, align="C")
+    
+    pdf.set_text_color(50, 50, 50)
+    pdf.set_font("Helvetica", "I", 11)
+    pdf.cell(0, 8, f"Confronto: {confronto}", ln=True, align="C")
+    pdf.cell(0, 8, f"Relatorio gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+    pdf.ln(10)
+    
+    # Cabeçalho da Tabela
+    pdf.set_fill_color(0, 156, 59) # Verde de Fundo
+    pdf.set_text_color(255, 255, 255) # Texto Branco
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(80, 10, " Nome do Apostador", border=1, fill=True)
+    pdf.cell(40, 10, " Palpite", border=1, fill=True, align="C")
+    pdf.cell(60, 10, " Data/Hora Registro", border=1, fill=True, align="C")
+    pdf.ln()
+    
+    # Linhas de Apostas
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "", 10)
+    
+    color_toggle = False
+    for aposta in apostas:
+        if color_toggle:
+            pdf.set_fill_color(240, 248, 240) # Alternar cor de fundo suave
+        else:
+            pdf.set_fill_color(255, 255, 255)
+            
+        # Normaliza textos para evitar quebra de codificação no PDF
+        nome = aposta.get("Nome", "").encode('latin-1', 'replace').decode('latin-1')
+        palpite = aposta.get("Palpite", "").encode('latin-1', 'replace').decode('latin-1')
+        data_reg = aposta.get("Data Registro", "").encode('latin-1', 'replace').decode('latin-1')
+        
+        pdf.cell(80, 10, f" {nome}", border=1, fill=True)
+        pdf.cell(40, 10, f" {palpite}", border=1, fill=True, align="C")
+        pdf.cell(60, 10, f" {data_reg}", border=1, fill=True, align="C")
+        pdf.ln()
+        color_toggle = not color_toggle
+        
+    return pdf.output()
+
 # --- CHAMADA DO GEMINI COM BUSCA EM TEMPO REAL (LIMITADO A 15 DIAS) ---
-@st.cache_data(ttl=1800)  # Guarda os jogos em cache por 30 minutos
+@st.cache_data(ttl=1800)
 def puxar_proximos_jogos():
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     
@@ -113,7 +171,6 @@ def puxar_proximos_jogos():
         return fallback_jogos
         
     try:
-        # Prompt ultra direcionado para limitar a busca em 15 dias dentro da Copa do Mundo de 2026
         prompt = (
             f"Hoje é dia {data_hoje} (junho de 2026). Faça uma pesquisa no Google e traga os jogos reais oficiais "
             f"da Seleção Brasileira Masculina de Futebol na Copa do Mundo de 2026 agendados para os próximos 15 dias (de {data_hoje} até 04/07/2026). "
@@ -126,7 +183,6 @@ def puxar_proximos_jogos():
         response = model.generate_content(prompt)
         texto = response.text.strip()
         
-        # Limpeza robusta do JSON
         if texto.startswith("```json"):
             texto = texto[7:]
         if texto.endswith("```"):
@@ -135,7 +191,6 @@ def puxar_proximos_jogos():
         
         resultado = json.loads(texto)
         if isinstance(resultado, list) and len(resultado) > 0:
-            # Filtra novamente via código para garantir que nada passe de 15 dias caso o modelo falhe
             jogos_filtrados = []
             for jogo in resultado:
                 try:
@@ -144,7 +199,6 @@ def puxar_proximos_jogos():
                     if 0 <= dias_diferenca <= 15:
                         jogos_filtrados.append(jogo)
                 except Exception:
-                    # Se houver erro de parsing na data, mantém como garantia se o formato estiver correto
                     if "2026" in jogo['data'] and not any(m in jogo['data'] for m in ["09", "10", "11"]):
                         jogos_filtrados.append(jogo)
             
@@ -154,26 +208,59 @@ def puxar_proximos_jogos():
     except Exception:
         return fallback_jogos
 
-# --- LÓGICA PRINCIPAL DO APLICATIVO ---
+# --- GERENCIAMENTO DE ESTADO E NAVEGAÇÃO ---
+# Inicializa o controle de abas no Session State
+if "aba_ativa" not in st.session_state:
+    st.session_state.aba_ativa = "🏆 Entrar & Apostar"
+
+if "grupo_selecionado_padrao" not in st.session_state:
+    st.session_state.grupo_selecionado_padrao = None
+
+def mudar_aba(nome_aba, grupo_foco=None):
+    st.session_state.aba_ativa = nome_aba
+    if grupo_foco:
+        st.session_state.grupo_selecionado_padrao = grupo_foco
+    st.rerun()
+
+# --- CARREGA DADOS DO BANCO ---
 dados_bolao = carregar_banco_dados()
 
 st.markdown("<h1 style='text-align: center; margin-bottom: 5px;'>⚽ Bolão dos Amigos da Seleção</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #666; margin-bottom: 30px;'>Crie o seu grupo de palpites, convide a galera e guarde o ficheiro de resultados!</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #666; margin-bottom: 25px;'>Crie o seu grupo de palpites, convide a galera e guarde o PDF de resultados!</p>", unsafe_allow_html=True)
 
-# Abas do aplicativo
-tab_jogar, tab_criar, tab_classificacao = st.tabs([
-    "🏆 Entrar & Apostar", 
-    "🛠️ Criar Novo Bolão", 
-    "📊 Ver Palpites & Download"
-])
+# Barra de Navegação Horizontal Dinâmica usando st.columns e st.button para simular abas controláveis
+col_nav1, col_nav2, col_nav3 = st.columns(3)
+
+with col_nav1:
+    if st.button("🏆 Entrar & Apostar", use_container_width=True, type="secondary" if st.session_state.aba_ativa != "🏆 Entrar & Apostar" else "primary"):
+        mudar_aba("🏆 Entrar & Apostar")
+with col_nav2:
+    if st.button("🛠️ Criar Novo Bolão", use_container_width=True, type="secondary" if st.session_state.aba_ativa != "🛠️ Criar Novo Bolão" else "primary"):
+        mudar_aba("🛠️ Criar Novo Bolão")
+with col_nav3:
+    if st.button("📊 Ver Palpites & Download", use_container_width=True, type="secondary" if st.session_state.aba_ativa != "📊 Ver Palpites & Download" else "primary"):
+        mudar_aba("📊 Ver Palpites & Download")
+
+st.markdown("---")
+
+# --- EXECUÇÃO CONFORME A ABA ATIVA ---
 
 # --- ABA 1: FAZER PALPITE ---
-with tab_jogar:
+if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
     st.markdown("### 📝 Registrar o seu Palpite")
     
     if dados_bolao:
         lista_grupos = list(dados_bolao.keys())
-        grupo_chosen = st.selectbox("Selecione de quem é o bolão em que quer entrar:", lista_grupos)
+        
+        # Define qual grupo exibir primeiro (útil após redirecionamento de nova criação)
+        indice_padrao = 0
+        if st.session_state.grupo_selecionado_padrao in lista_grupos:
+            indice_padrao = lista_grupos.index(st.session_state.grupo_selecionado_padrao)
+            
+        grupo_chosen = st.selectbox("Selecione de quem é o bolão em que quer entrar:", lista_grupos, index=indice_padrao)
+        
+        # Limpa o foco temporário após seleção
+        st.session_state.grupo_selecionado_padrao = grupo_chosen
         
         detalhes_grupo = dados_bolao[grupo_chosen]
         
@@ -210,13 +297,15 @@ with tab_jogar:
                     detalhes_grupo["apostas"].append(novo_palpite)
                     
                     salvar_banco_dados(dados_bolao)
-                    st.success(f"🎉 Palpite registado com sucesso! Boa sorte, {nome_participante}!")
-                    st.rerun()
+                    st.success(f"🎉 Palpite registrado com sucesso! Redirecionando para classificação...")
+                    
+                    # Redireciona na hora para a aba de resultados
+                    mudar_aba("📊 Ver Palpites & Download", grupo_foco=grupo_chosen)
     else:
-        st.warning("Nenhum bolão ativo na nuvem neste momento. Vá ao separador 'Criar Novo Bolão' para inaugurar a rodada!")
+        st.warning("Nenhum bolão ativo na nuvem neste momento. Vá para a aba 'Criar Novo Bolão' para inaugurar a rodada!")
 
 # --- ABA 2: CRIAR NOVO BOLÃO ---
-with tab_criar:
+elif st.session_state.aba_ativa == "🛠️ Criar Novo Bolão":
     st.markdown("### 🛠️ Configurar um Novo Grupo")
     st.write("Crie uma sala nova personalizada para disputar com os seus amigos.")
     
@@ -224,7 +313,6 @@ with tab_criar:
     
     st.markdown("#### 📅 Próximos Confrontos Reais Encontrados")
     
-    # Obtém a lista dinâmica via Google Search Grounding ou fallback idêntico
     jogos_reais_selecionados = puxar_proximos_jogos()
     opcoes_partidas = [f"{partida['confronto']} ({partida['data']})" for partida in jogos_reais_selecionados]
     
@@ -241,15 +329,24 @@ with tab_criar:
                 "apostas": []
             }
             salvar_banco_dados(dados_bolao)
-            st.success(f"✅ Bolão '{nome_lider}' criado com sucesso para o jogo {escolha_partida}!")
-            st.rerun()
+            st.success(f"✅ Bolão '{nome_lider}' criado com sucesso! Redirecionando para a área de palpites...")
+            
+            # Redireciona na hora para a aba de apostar, focando no bolão recém criado
+            mudar_aba("🏆 Entrar & Apostar", grupo_foco=nome_lider.strip())
 
 # --- ABA 3: CLASSIFICAÇÃO & DOWNLOAD ---
-with tab_classificacao:
+elif st.session_state.aba_ativa == "📊 Ver Palpites & Download":
     st.markdown("### 📊 Palpites Registados")
     
     if dados_bolao:
-        grupo_resumo = st.selectbox("Selecione o grupo para auditar:", list(dados_bolao.keys()), key="select_filtro_resumo")
+        lista_opcoes_resumo = list(dados_bolao.keys())
+        
+        # Mantém o bolão atual em exibição se houver um padrão selecionado
+        indice_resumo = 0
+        if st.session_state.grupo_selecionado_padrao in lista_opcoes_resumo:
+            indice_resumo = lista_opcoes_resumo.index(st.session_state.grupo_selecionado_padrao)
+            
+        grupo_resumo = st.selectbox("Selecione o grupo para auditar:", lista_opcoes_resumo, index=indice_resumo)
         dados_do_grupo = dados_bolao[grupo_resumo]
         
         st.write(f"**Partida Selecionada:** {dados_do_grupo['jogo']}")
@@ -260,14 +357,18 @@ with tab_classificacao:
             df_palpites = df_palpites[["Nome", "Palpite", "Data Registro"]]
             st.dataframe(df_palpites, use_container_width=True)
             
-            csv_bytes = df_palpites.to_csv(index=False).encode('utf-8')
-            
-            st.download_button(
-                label="📥 Baixar Documento de Apostas (Excel / CSV)",
-                data=csv_bytes,
-                file_name=f"bolao_{grupo_resumo.lower().replace(' ', '_')}.csv",
-                mime="text/csv",
-            )
+            # --- GERAÇÃO E DOWNLOAD EM PDF ---
+            try:
+                pdf_bytes = gerar_pdf_bolao(grupo_resumo, dados_do_grupo['jogo'], dados_do_grupo['apostas'])
+                
+                st.download_button(
+                    label="📥 Baixar PDF Oficial de Resultados",
+                    data=bytes(pdf_bytes),
+                    file_name=f"bolao_{grupo_resumo.lower().replace(' ', '_')}.pdf",
+                    mime="application/pdf",
+                )
+            except Exception as e:
+                st.error(f"Erro ao gerar relatório em PDF: {e}")
         else:
             st.info("Nenhum palpite registado nesta sala ainda. Seja o primeiro a apostar!")
     else:
