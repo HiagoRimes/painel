@@ -14,18 +14,17 @@ genai.configure(api_key=CHAVE_GEMINI)
 @st.cache_data(ttl=3600)  # Guarda o resultado por 1 hora para economizar API
 def buscar_jogos_gemini():
     try:
-        # Mudamos para o nome estável completo exigido pelas chaves novas
-        # E ativamos a busca do Google (Google Search) para pegar dados de hoje
+        # Correção da ferramenta de busca web do Google para o SDK do Gemini
         model = genai.GenerativeModel(
             model_name='models/gemini-1.5-flash',
-            tools='GoogleSearch'
+            tools=[{"google_search": {}}]  # Formato correto exigido pela API
         )
         
         prompt = (
-            "Consulte a internet em tempo real e liste os próximos 2 jogos oficiais da Seleção Brasileira de Futebol Masculino. "
+            "Consulte os resultados de busca do Google e liste os próximos 2 jogos oficiais da Seleção Brasileira de Futebol Masculino. "
             "Responda estritamente em um array JSON com objetos contendo 'confronto' e 'data'. "
             "Exemplo de resposta: [{'confronto': 'Brasil x Haiti', 'data': '19/06/2026'}, {'confronto': 'Brasil x Chile', 'data': '25/06/2026'}] "
-            "Não adicione nenhuma outra palavra, apenas o JSON válido."
+            "Não adicione nenhuma outra palavra ou formatação fora do JSON."
         )
         
         response = model.generate_content(prompt)
@@ -142,3 +141,4 @@ with aba_resultados:
             st.info("Ninguém deixou palpites nesse grupo ainda.")
     else:
         st.warning("Nenhum bolão ativo para gerar relatórios.")
+    
