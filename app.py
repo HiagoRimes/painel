@@ -14,12 +14,20 @@ genai.configure(api_key=CHAVE_GEMINI)
 @st.cache_data(ttl=3600)  # Guarda o resultado por 1 hora para economizar API
 def buscar_jogos_gemini():
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = (
-            "Liste os próximos 2 jogos da Seleção Brasileira de Futebol Masculina. "
-            "Responda estritamente em um array JSON com objetos contendo 'confronto' e 'data'. "
-            "Exemplo: [{'confronto': 'Brasil x Haiti', 'data': '19/06/2026'}, {'confronto': 'Brasil x Chile', 'data': '25/06/2026'}]"
+        # Mudamos para o nome estável completo exigido pelas chaves novas
+        # E ativamos a busca do Google (Google Search) para pegar dados de hoje
+        model = genai.GenerativeModel(
+            model_name='models/gemini-1.5-flash',
+            tools='GoogleSearch'
         )
+        
+        prompt = (
+            "Consulte a internet em tempo real e liste os próximos 2 jogos oficiais da Seleção Brasileira de Futebol Masculino. "
+            "Responda estritamente em um array JSON com objetos contendo 'confronto' e 'data'. "
+            "Exemplo de resposta: [{'confronto': 'Brasil x Haiti', 'data': '19/06/2026'}, {'confronto': 'Brasil x Chile', 'data': '25/06/2026'}] "
+            "Não adicione nenhuma outra palavra, apenas o JSON válido."
+        )
+        
         response = model.generate_content(prompt)
         
         # Limpa as tags de markdown se o Gemini enviar
@@ -53,14 +61,12 @@ with aba_apostar:
     st.header("Faça sua Aposta")
     
     if st.session_state.boloes:
-        # Lista todos os bolões criados (o seu, o da sua namorada, etc.)
         lista_boloes = list(st.session_state.boloes.keys())
         bolao_selecionado = st.selectbox("Escolha o bolão para entrar:", lista_boloes)
         
         dados_bolao = st.session_state.boloes[bolao_selecionado]
         st.info(f"Jogo deste bolão: **{dados_bolao['jogo']}**")
         
-        # Formulário de Palpite
         with st.form("form_aposta"):
             nome_apostador = st.text_input("Seu Nome:")
             col1, col2 = st.columns(2)
@@ -94,7 +100,6 @@ with aba_criar:
     jogos_disponiveis = buscar_jogos_gemini()
     
     if jogos_disponiveis:
-        # Formata as opções vinda do Gemini para o seletor do Streamlit
         opcoes_jogos = [f"{j['confronto']} ({j['data']})" for j in jogos_disponiveis]
         jogo_escolhido = st.selectbox("Selecione qual jogo o Gemini encontrou para o seu bolão:", opcoes_jogos)
         
@@ -110,7 +115,7 @@ with aba_criar:
                 }
                 st.success(f"Pronto! O '{nome_criador}' foi criado para o jogo {jogo_escolhido}. Seus amigos já podem apostar nele na Aba 1.")
     else:
-        st.error("O Gemini não conseguiu listar jogos no momento. Verifique se a sua chave de teste ainda está ativa.")
+        st.error("Não foi possível listar as partidas de futebol. Atualize a página para tentar novamente.")
 
 # --- ABA 3: RESULTADOS E DOWNLOAD DOC ---
 with aba_resultados:
@@ -125,7 +130,6 @@ with aba_resultados:
             df = pd.DataFrame(apostas_atuais)
             st.dataframe(df, use_container_width=True)
             
-            # Converte a tabela para CSV para que eles possam baixar o documento
             csv = df.to_csv(index=False).encode('utf-8')
             
             st.download_button(
@@ -138,4 +142,3 @@ with aba_resultados:
             st.info("Ninguém deixou palpites nesse grupo ainda.")
     else:
         st.warning("Nenhum bolão ativo para gerar relatórios.")
-        
