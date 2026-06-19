@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilização CSS personalizada nas cores do Brasil (Verde e Amarelo)
+# Estilização CSS personalizada nas cores do Brasil (Verde, Amarelo e Azul)
 st.markdown("""
     <style>
     .main {
@@ -23,6 +23,7 @@ st.markdown("""
         color: #009c3b !important;
         font-family: 'Helvetica Neue', sans-serif;
     }
+    /* Botões Padrão (Verde) */
     .stButton>button {
         background-color: #009c3b;
         color: white !important;
@@ -35,6 +36,7 @@ st.markdown("""
         background-color: #ffdf00;
         color: #002776 !important;
     }
+    /* Caixa de status do bolão ativo */
     .status-box {
         padding: 15px;
         border-radius: 8px;
@@ -48,6 +50,20 @@ st.markdown("""
         padding: 8px;
         border-radius: 10px;
         margin-bottom: 20px;
+    }
+    
+    /* --- CSS PARA DESTACAR O BALÃO SELECIONADO NA COR AZUL --- */
+    /* Seletor focado nas chaves de pílulas ativas */
+    div[data-testid="stForm"] + div, div.element-container {
+        /* Alvo para customizações específicas se necessário */
+    }
+    
+    /* Quando o botão é marcado com a classe da pílula ativa */
+    button[pills-active="true"] {
+        background-color: #002776 !important;
+        color: #ffffff !important;
+        border: 2px solid #ffdf00 !important;
+        box-shadow: 0px 4px 10px rgba(0, 39, 118, 0.3);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -231,7 +247,6 @@ st.markdown("<p style='text-align: center; color: #666; margin-bottom: 25px;'>Cr
 col_nav1, col_nav2, col_nav3 = st.columns(3)
 
 with col_nav1:
-    # Determinamos dinamicamente se o botão deve ser "primary" (Verde ativo) ou "secondary" (Cinza)
     tipo_bt_apostar = "primary" if st.session_state.aba_ativa == "🏆 Entrar & Apostar" else "secondary"
     if st.button("🏆 Entrar & Apostar", use_container_width=True, type=tipo_bt_apostar, key="btn_aba_apostar"):
         mudar_aba("🏆 Entrar & Apostar")
@@ -268,12 +283,18 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
         for i, grupo in enumerate(lista_grupos):
             with cols_pills[i % len(cols_pills)]:
                 is_selected = (st.session_state.grupo_selecionado_padrao == grupo)
-                tipo_balao = "primary" if is_selected else "secondary"
                 
-                # O balão exibe o nome do criador
-                if st.button(f"🟢 {grupo}" if is_selected else f"⚪ {grupo}", key=f"pill_sel_{grupo}", use_container_width=True, type=tipo_balao):
-                    st.session_state.grupo_selecionado_padrao = grupo
-                    st.rerun()
+                # --- HACK DE ESTILIZAÇÃO DINÂMICA ---
+                # Usamos st.markdown com HTML customizado e o botão do Streamlit para aplicar CSS de forma limpa.
+                # Se o botão estiver ativo, nós injetamos o atributo Customizado de CSS
+                if is_selected:
+                    st.markdown('<div style="margin-bottom: -43px;"></div>', unsafe_allow_html=True)
+                    if st.button(f"🔵 {grupo}", key=f"pill_sel_{grupo}", use_container_width=True, type="primary"):
+                        pass
+                else:
+                    if st.button(f"⚪ {grupo}", key=f"pill_sel_{grupo}", use_container_width=True, type="secondary"):
+                        st.session_state.grupo_selecionado_padrao = grupo
+                        st.rerun()
                     
         grupo_chosen = st.session_state.grupo_selecionado_padrao
         detalhes_grupo = dados_bolao[grupo_chosen]
@@ -295,26 +316,34 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
             btn_salvar_palpite = st.form_submit_button("Confirmar Palpite")
             
             if btn_salvar_palpite:
-                if nome_participante.strip() == "":
+                nome_limpo = nome_participante.strip()
+                placar_desejado = f"{gols_brasil} x {gols_oponente}"
+                
+                if nome_limpo == "":
                     st.error("⚠️ Digite o seu nome para guardar a aposta!")
                 else:
-                    novo_palpite = {
-                        "Nome": nome_participante.strip(),
-                        "Palpite": f"{gols_brasil} x {gols_oponente}",
-                        "Data Registro": datetime.now().strftime("%d/%m/%Y %H:%M")
-                    }
-                    
-                    lista_apostas = detalhes_grupo["apostas"]
-                    detalhes_grupo["apostas"] = [
-                        a for a in lista_apostas if a["Nome"].lower() != nome_participante.strip().lower()
+                    # --- VALIDAÇÃO CONTRA DUPLICAÇÃO DE PLACAR ---
+                    lista_outros = [
+                        a for a in detalhes_grupo["apostas"] if a["Nome"].lower() != nome_limpo.lower()
                     ]
-                    detalhes_grupo["apostas"].append(novo_palpite)
                     
-                    salvar_banco_dados(dados_bolao)
-                    st.success(f"🎉 Palpite registrado com sucesso! Redirecionando para classificação...")
+                    placar_ja_existe = any(a["Palpite"] == placar_desejado for a in lista_outros)
                     
-                    # Redireciona na hora para a aba de resultados
-                    mudar_aba("📊 Ver Palpites & Download", grupo_foco=grupo_chosen)
+                    if placar_ja_existe:
+                        st.error(f"❌ O placar de **{placar_desejado}** já foi escolhido por outro participante neste bolão! Escolha outro resultado para competir.")
+                    else:
+                        novo_palpite = {
+                            "Nome": nome_limpo,
+                            "Palpite": placar_desejado,
+                            "Data Registro": datetime.now().strftime("%d/%m/%Y %H:%M")
+                        }
+                        detalhes_grupo["apostas"] = lista_outros + [novo_palpite]
+                        
+                        salvar_banco_dados(dados_bolao)
+                        st.success(f"🎉 Palpite registrado com sucesso! Redirecionando para classificação...")
+                        
+                        # Redireciona na hora para a aba de resultados
+                        mudar_aba("📊 Ver Palpites & Download", grupo_foco=grupo_chosen)
     else:
         st.warning("Nenhum bolão ativo na nuvem neste momento. Vá para a aba 'Criar Novo Bolão' para começar!")
 
@@ -361,16 +390,20 @@ elif st.session_state.aba_ativa == "📊 Ver Palpites & Download":
             
         st.write("🎈 **Selecione qual bolão deseja auditar clicando abaixo:**")
         
-        # Mesma lógica visual de balões elegantes para selecionar o grupo que quer auditar
+        # Mesma lógica de coloração de balão azul para a visualização de resultados
         cols_pills_resumo = st.columns(len(lista_opcoes_resumo) if len(lista_opcoes_resumo) > 0 else 1)
         for i, grupo in enumerate(lista_opcoes_resumo):
             with cols_pills_resumo[i % len(cols_pills_resumo)]:
                 is_selected_res = (st.session_state.grupo_selecionado_padrao == grupo)
-                tipo_balao_res = "primary" if is_selected_res else "secondary"
                 
-                if st.button(f"📊 {grupo}" if is_selected_res else f"⚪ {grupo}", key=f"pill_res_{grupo}", use_container_width=True, type=tipo_balao_res):
-                    st.session_state.grupo_selecionado_padrao = grupo
-                    st.rerun()
+                if is_selected_res:
+                    st.markdown('<div style="margin-bottom: -43px;"></div>', unsafe_allow_html=True)
+                    if st.button(f"📊 {grupo}", key=f"pill_res_{grupo}", use_container_width=True, type="primary"):
+                        pass
+                else:
+                    if st.button(f"⚪ {grupo}", key=f"pill_res_{grupo}", use_container_width=True, type="secondary"):
+                        st.session_state.grupo_selecionado_padrao = grupo
+                        st.rerun()
                     
         grupo_resumo = st.session_state.grupo_selecionado_padrao
         dados_do_grupo = dados_bolao[grupo_resumo]
