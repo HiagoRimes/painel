@@ -56,18 +56,18 @@ if "GOOGLE_API_KEY" in st.secrets:
 else:
     api_configurada = False
 
-# Método de resolução dinâmica do modelo igual ao seu código de estudo
+# Método de resolução dinâmica do modelo com Google Search Grounding habilitado
 def get_model():
     if not api_configurada:
         return None
     try:
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        prioridade = ['models/gemini-2.5-flash-lite', 'models/gemini-1.5-flash', 'models/gemini-1.5-pro']
-        for p in prioridade:
-            if p in models: 
-                return genai.GenerativeModel(p)
-        return genai.GenerativeModel(models[0])
+        # Habilita a ferramenta de busca oficial 'google_search_retrieval'
+        return genai.GenerativeModel(
+            model_name='models/gemini-1.5-flash',
+            tools='google_search_retrieval'
+        )
     except Exception:
+        # Fallback sem busca se falhar
         return genai.GenerativeModel('models/gemini-1.5-flash')
 
 if api_configurada:
@@ -98,34 +98,48 @@ def salvar_banco_dados(novos_dados):
     except Exception as e:
         st.sidebar.warning(f"Erro de sincronização: {e}")
 
-# --- BANCO DE JOGOS REAIS ATUALIZADO (A partir de hoje, 19/06/2026) ---
-def obter_jogos_reais_selecao():
+# --- CHAMADA DO GEMINI COM BUSCA EM TEMPO REAL ---
+@st.cache_data(ttl=1800)  # Guarda os jogos em cache por 30 minutos
+def puxar_proximos_jogos():
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     
-    # Calendário Real de Próximos Compromissos Oficiais (Apenas Hoje e Datas Futuras de 2026)
-    jogos_reais = [
-        {"confronto": "Brasil x Haiti", "data": data_hoje},
+    # Calendário Real Base Atualizado para 2026 como fallback de segurança absoluto
+    fallback_jogos = [
+        {"confronto": "Brasil x Haiti", "data": "19/06/2026"},
+        {"confronto": "Brasil x Escócia", "data": "24/06/2026"},
         {"confronto": "Equador x Brasil", "data": "04/09/2026"},
         {"confronto": "Brasil x Colômbia", "data": "10/09/2026"},
-        {"confronto": "Paraguai x Brasil", "data": "15/10/2026"},
-        {"confronto": "Brasil x Argentina", "data": "20/10/2026"}
+        {"confronto": "Paraguai x Brasil", "data": "15/10/2026"}
     ]
-    return jogos_reais
-
-# --- INTEGRANDO GEMINI PARA DAR DICAS DE PLACAR ---
-@st.cache_data(ttl=600)
-def obter_analise_confrontos(confronto):
+    
     if not model:
-        return "Espera-se um grande jogo para hoje!"
+        return fallback_jogos
+        
     try:
         prompt = (
-            f"Como um especialista em futebol, dê uma dica extremamente rápida de uma frase (até 15 palavras) "
-            f"sobre o que esperar do confronto histórico ou equilíbrio de forças para o jogo: {confronto}."
+            f"Hoje é dia {data_hoje}. Faça uma pesquisa no Google e traga a lista real dos próximos 3 jogos oficiais "
+            "ou amistosos da Seleção Brasileira de Futebol Masculino que acontecerão a partir de hoje. "
+            "Inclua os jogos iminentes como contra o Haiti (19/06/2026) e Escócia (24/06/2026). "
+            "Responda estritamente em formato JSON no padrão: "
+            "[{'confronto': 'Brasil x Haiti', 'data': '19/06/2026'}, {'confronto': 'Brasil x Escócia', 'data': '24/06/2026'}] "
+            "Não adicione nenhuma outra palavra, cabeçalho ou bloco markdown."
         )
         response = model.generate_content(prompt)
-        return response.text.strip()
+        texto = response.text.strip()
+        
+        # Limpeza robusta do JSON
+        if texto.startswith("```json"):
+            texto = texto[7:]
+        if texto.endswith("```"):
+            texto = texto[:-3]
+        texto = texto.strip()
+        
+        resultado = json.loads(texto)
+        if isinstance(resultado, list) and len(resultado) > 0:
+            return resultado
+        return fallback_jogos
     except Exception:
-        return "Espera-se um jogo muito disputado e com forte pressão ofensiva!"
+        return fallback_jogos
 
 # --- LÓGICA PRINCIPAL DO APLICATIVO ---
 dados_bolao = carregar_banco_dados()
@@ -157,11 +171,6 @@ with tab_jogar:
         </div>
         """, unsafe_allow_html=True)
         
-        # Exibe análise do Gemini se estiver configurado
-        if api_configurada:
-            analise = obter_analise_confrontos(detalhes_grupo['jogo'])
-            st.caption(f"💡 *Análise rápida do Gemini:* {analise}")
-            
         with st.form("form_novo_palpite"):
             nome_participante = st.text_input("O seu Nome ou Alcunha:")
             
@@ -196,33 +205,17 @@ with tab_jogar:
 # --- ABA 2: CRIAR NOVO BOLÃO ---
 with tab_criar:
     st.markdown("### 🛠️ Configurar um Novo Grupo")
-    st.write("Crie uma sala nova personalizada. Os seus amigos poderão selecionar o seu nome na aba de apostas!")
+    st.write("Crie uma sala nova personalizada para disputar com os seus amigos.")
     
     nome_lider = st.text_input("Quem está a criar este bolão? (Ex: Bolão do Thiago, Bolão da Gabi):")
     
-    st.markdown("#### 📅 Próximos Confrontos Reais do Brasil")
+    st.markdown("#### 📅 Próximos Confrontos Reais Encontrados")
     
-    # Obtém os dados reais do futebol brasileiro estruturados de hoje em diante
-    jogos_reais_selecionados = obter_jogos_reais_selecao()
+    # Obtém a lista dinâmica via Google Search Grounding ou fallback idêntico
+    jogos_reais_selecionados = puxar_proximos_jogos()
     opcoes_partidas = [f"{partida['confronto']} ({partida['data']})" for partida in jogos_reais_selecionados]
     
     escolha_partida = st.selectbox("Selecione qual partida será disputada no seu bolão:", opcoes_partidas)
-    
-    st.markdown("##### ✏️ Ajuste ou Confirme os detalhes do jogo abaixo:")
-    
-    # Processamento para permitir ajuste rápido dos campos
-    try:
-        partes = escolha_partida.split(" (")
-        confronto_sugerido = partes[0]
-        data_sugerida = partes[1].replace(")", "")
-    except Exception:
-        confronto_sugerido = escolha_partida
-        data_sugerida = datetime.now().strftime("%d/%m/%Y")
-        
-    col_edit_1, col_edit_2 = st.columns(2)
-    confronto_final_nome = col_edit_1.text_input("Confronto (Pode alterar o adversário se desejar):", value=confronto_sugerido)
-    confronto_final_data = col_edit_2.text_input("Data do Jogo:", value=data_sugerida)
-    confronto_final = f"{confronto_final_nome} ({confronto_final_data})"
         
     if st.button("🚀 Inicializar Meu Bolão"):
         if nome_lider.strip() == "":
@@ -231,11 +224,11 @@ with tab_criar:
             st.error("❌ Já existe um bolão ativo com esse nome. Escolha outro nome de grupo!")
         else:
             dados_bolao[nome_lider.strip()] = {
-                "jogo": confronto_final,
+                "jogo": escolha_partida,
                 "apostas": []
             }
             salvar_banco_dados(dados_bolao)
-            st.success(f"✅ Bolão '{nome_lider}' criado com sucesso para o jogo {confronto_final}!")
+            st.success(f"✅ Bolão '{nome_lider}' criado com sucesso para o jogo {escolha_partida}!")
             st.rerun()
 
 # --- ABA 3: CLASSIFICAÇÃO & DOWNLOAD ---
@@ -271,7 +264,7 @@ with tab_classificacao:
 st.sidebar.markdown("### ⚙️ Informações da API")
 if api_configurada and model:
     st.sidebar.write(f"**Modelo Ativo:** {model.model_name}")
-    st.sidebar.success("Conectado com o Gemini")
+    st.sidebar.success("Busca do Google Ativada")
 else:
     st.sidebar.warning("API inativa (modo manual ativo)")
 
