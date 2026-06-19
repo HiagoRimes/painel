@@ -10,60 +10,74 @@ from fpdf import FPDF
 st.set_page_config(
     page_title="Bolão Seleção Brasileira ⚽",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed"  # Força a barra lateral a ficar recolhida/oculta
 )
 
-# Estilização CSS refinada para os botões, pílulas e tabelas de resultados
+# Estilização CSS responsiva que se adapta automaticamente ao Tema Escuro e Claro (Dark/Light Mode)
 st.markdown("""
     <style>
+    /* Oculta completamente o botão de abrir a barra lateral do Streamlit para máxima segurança */
     [data-testid="collapsedControl"] {
         display: none;
     }
-    .main {
-        background-color: #f7f9fa;
-    }
+    
     h1, h2, h3 {
         color: #009c3b !important;
         font-family: 'Helvetica Neue', sans-serif;
     }
+    
+    /* Caixa de status do bolão ativo - Adaptável ao Tema Claro e Escuro usando variáveis CSS */
     .status-box {
         padding: 15px;
         border-radius: 8px;
-        background-color: #e6f4ea;
-        border-left: 5px solid #009c3b;
+        background-color: rgba(0, 156, 59, 0.15) !important;
+        border-left: 5px solid #009c3b !important;
         margin-bottom: 15px;
+        color: var(--text-color) !important;
     }
+    
+    /* Cartões de estatísticas dinâmicos - Adaptáveis ao Tema Claro e Escuro */
     .stat-card {
         padding: 15px;
         border-radius: 8px;
-        background-color: #ffffff;
-        border: 1px solid #e0e0e0;
+        background-color: var(--secondary-background-color) !important;
+        border: 1px solid rgba(128, 128, 128, 0.2) !important;
         text-align: center;
         box-shadow: 0px 2px 4px rgba(0,0,0,0.05);
+        color: var(--text-color) !important;
     }
+    .stat-card strong {
+        color: #009c3b !important;
+    }
+    
+    /* Estilização para as pílulas de navegação superior */
     div[data-testid="stHorizontalBlock"] {
-        background-color: #f0f2f6;
+        background-color: var(--secondary-background-color);
         padding: 8px;
         border-radius: 10px;
         margin-bottom: 20px;
+        border: 1px solid rgba(128, 128, 128, 0.2);
     }
+    
+    /* --- CORES DINÂMICAS DOS BOTÕES --- */
     .stButton>button {
         border-radius: 8px !important;
         font-weight: bold !important;
         transition: 0.3s !important;
     }
-    /* 1. Botões Secundários (NÃO SELECIONADOS - Cinza Claro) */
+    
+    /* 1. Botões Secundários (NÃO SELECIONADOS - Adaptáveis ao Tema) */
     .stButton>button[data-testid="stBaseButton-secondary"] {
-        background-color: #f0f2f6 !important;
-        color: #31333F !important;
-        border: 1px solid #d3d3d3 !important;
+        background-color: var(--secondary-background-color) !important;
+        color: var(--text-color) !important;
+        border: 1px solid rgba(128, 128, 128, 0.4) !important;
     }
     .stButton>button[data-testid="stBaseButton-secondary"]:hover {
-        background-color: #e0e2e6 !important;
-        color: #002776 !important;
+        background-color: rgba(0, 39, 118, 0.1) !important;
         border: 1px solid #002776 !important;
     }
-    /* 2. Botões Primários (SELECIONADOS ATIVOS - Azul Royal) */
+    
+    /* 2. Botões Primários (SELECIONADOS ATIVOS - Azul Royal com Borda Amarela) */
     .stButton>button[data-testid="stBaseButton-primary"] {
         background-color: #002776 !important;
         color: white !important;
@@ -74,6 +88,7 @@ st.markdown("""
         background-color: #001f5c !important;
         color: #ffdf00 !important;
     }
+    
     /* 3. Botões de Enviar Formulário (Ação de Apostar - Verde) */
     .stFormSubmitButton>button {
         background-color: #009c3b !important;
@@ -106,6 +121,7 @@ def get_model():
     if not api_configurada:
         return None
     try:
+        # Força o carregamento do modelo estável habilitando a pesquisa em tempo real do Google
         return genai.GenerativeModel(
             model_name='models/gemini-1.5-flash',
             tools='google_search_retrieval'
@@ -141,7 +157,7 @@ def salvar_banco_dados(novos_dados):
     except Exception as e:
         st.toast(f"⚠️ Erro de sincronização: {e}")
 
-# --- CALCULAR PONTUAÇÃO INDIVIDUALLY ---
+# --- CALCULAR PONTUAÇÃO ---
 def calcular_pontos(palpite, resultado_real):
     if not palpite or not resultado_real:
         return 0
@@ -153,51 +169,45 @@ def calcular_pontos(palpite, resultado_real):
         if gols_palpite_br == gols_real_br and gols_palpite_rival == gols_real_rival:
             return 10
             
-        # Determinação do vencedor/empate
         vencedor_palpite = "BR" if gols_palpite_br > gols_palpite_rival else ("RIVAL" if gols_palpite_rival > gols_palpite_br else "EMPATE")
         vencedor_real = "BR" if gols_real_br > gols_real_rival else ("RIVAL" if gols_real_rival > gols_real_br else "EMPATE")
         
+        # 2. Acerto do vencedor e saldo (5 Pontos) ou vencedor simples (3 Pontos)
         if vencedor_palpite == vencedor_real:
-            # 2. Acerto do vencedor e diferença de golos (5 Pontos)
-            diff_palpite = gols_palpite_br - gols_palpite_rival
-            diff_real = gols_real_br - gols_real_rival
-            if diff_palpite == diff_real:
+            saldo_palpite = gols_palpite_br - gols_palpite_rival
+            saldo_real = gols_real_br - gols_real_rival
+            if saldo_palpite == saldo_real:
                 return 5
-            # 3. Acerto simples de quem venceu (3 Pontos)
             return 3
     except Exception:
         pass
     return 0
 
 # --- GERADOR DE RELATÓRIO EM PDF ---
-def gerar_pdf_bolao(nome_grupo, confronto, apostas, resultado_real=None):
+def gerar_pdf_bolao(nome_grupo, confronto, apostas):
     pdf = FPDF()
     pdf.add_page()
     
-    pdf.set_text_color(0, 156, 59) # Verde
+    pdf.set_text_color(0, 156, 59) # Verde Seleção
     pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 15, "RELATORIO OFICIAL - BOLAO DA SELECAO", ln=True, align="C")
+    pdf.cell(0, 15, "BOLAO DA SELECAO BRASILEIRA", ln=True, align="C")
     
     pdf.set_text_color(0, 39, 118) # Azul
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, f"Grupo: {nome_grupo}", ln=True, align="C")
+    pdf.cell(0, 10, f"Grupo de Apostas: {nome_grupo}", ln=True, align="C")
     
     pdf.set_text_color(50, 50, 50)
     pdf.set_font("Helvetica", "I", 11)
     pdf.cell(0, 8, f"Confronto: {confronto}", ln=True, align="C")
-    if resultado_real:
-        pdf.cell(0, 8, f"Placar Final Real: {resultado_real}", ln=True, align="C")
-    pdf.cell(0, 8, f"Relatorio extraido em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+    pdf.cell(0, 8, f"Relatorio gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
     pdf.ln(10)
     
-    # Cabeçalhos
     pdf.set_fill_color(0, 156, 59)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(70, 10, " Nome do Apostador", border=1, fill=True)
-    pdf.cell(30, 10, " Palpite", border=1, fill=True, align="C")
-    pdf.cell(50, 10, " Registro", border=1, fill=True, align="C")
-    pdf.cell(30, 10, " Pontos", border=1, fill=True, align="C")
+    pdf.cell(80, 10, " Nome do Apostador", border=1, fill=True)
+    pdf.cell(40, 10, " Palpite", border=1, fill=True, align="C")
+    pdf.cell(60, 10, " Data/Hora Registro", border=1, fill=True, align="C")
     pdf.ln()
     
     pdf.set_text_color(0, 0, 0)
@@ -214,41 +224,38 @@ def gerar_pdf_bolao(nome_grupo, confronto, apostas, resultado_real=None):
         palpite = aposta.get("Palpite", "").encode('latin-1', 'replace').decode('latin-1')
         data_reg = aposta.get("Data Registro", "").encode('latin-1', 'replace').decode('latin-1')
         
-        pts = 0
-        if resultado_real:
-            pts = calcular_pontos(palpite, resultado_real)
-            
-        pdf.cell(70, 10, f" {nome}", border=1, fill=True)
-        pdf.cell(30, 10, f" {palpite}", border=1, fill=True, align="C")
-        pdf.cell(50, 10, f" {data_reg}", border=1, fill=True, align="C")
-        pdf.cell(30, 10, f" {pts} pts", border=1, fill=True, align="C")
+        pdf.cell(80, 10, f" {nome}", border=1, fill=True)
+        pdf.cell(40, 10, f" {palpite}", border=1, fill=True, align="C")
+        pdf.cell(60, 10, f" {data_reg}", border=1, fill=True, align="C")
         pdf.ln()
         color_toggle = not color_toggle
         
     return pdf.output()
 
-# --- CHAMADA DO GEMINI COM BUSCA EM TEMPO REAL (LIMITADO A 15 DIAS) ---
-@st.cache_data(ttl=1800)
+# --- CHAMADA DO GEMINI COM BUSCA EM TEMPO REAL ---
+@st.cache_data(ttl=900)  # Reduzido para 15 minutos para manter máxima atualização
 def puxar_proximos_jogos():
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     
+    # Backup mínimo se o Google Search falhar temporariamente
     fallback_jogos = [
-        {"confronto": "Brasil x Haiti", "data": "19/06/2026", "hora": "17:00"},
-        {"confronto": "Brasil x Escócia", "data": "24/06/2026", "hora": "21:00"}
+        {"confronto": "Brasil x Haiti", "data": "19/06/2026", "hora": "21:00"},
+        {"confronto": "Brasil x Escócia", "data": "24/06/2026", "hora": "16:00"}
     ]
     
     if not model:
         return fallback_jogos
         
     try:
+        # Prompt de busca ao vivo super restritivo que exige os horários oficiais locais
         prompt = (
-            f"Hoje é dia {data_hoje} (junho de 2026). Faça uma pesquisa no Google e traga os jogos reais oficiais "
-            f"da Seleção Brasileira Masculina de Futebol na Copa do Mundo de 2026 agendados para os próximos 15 dias (de {data_hoje} até 04/07/2026). "
-            f"Ignore totalmente jogos de Eliminatórias de setembro ou outubro. Foque apenas em partidas reais da Copa de 2026 nesse intervalo de 15 dias, "
-            f"como o jogo de hoje contra o Haiti (19/06/2026) e o jogo contra a Escócia (24/06/2026). "
-            f"Para cada jogo forneça o confronto, data e a hora oficial prevista no formato JSON estrito: "
-            f"[{{'confronto': 'Brasil x Adversario', 'data': 'DD/MM/2026', 'hora': 'HH:MM'}}] "
-            f"Não adicione nenhuma outra palavra, cabeçalho ou bloco markdown."
+            f"Hoje é dia {data_hoje}. Faça uma pesquisa rigorosa no Google e extraia a lista real "
+            f"de jogos oficiais da Seleção Brasileira Masculina de Futebol na Copa do Mundo de 2026 "
+            f"agendados especificamente para os próximos 15 dias (até 04/07/2026). "
+            f"Foque apenas em partidas reais deste período (como o jogo contra o Haiti e contra a Escócia). "
+            f"Você deve extrair o horário de início oficial de cada partida de acordo com o fuso de Brasília (UTC-3). "
+            f"Responda estritamente com um array JSON válido, usando o formato abaixo, sem cabeçalhos ou markdown: "
+            f"[{{\"confronto\": \"Brasil x Adversário\", \"data\": \"DD/MM/2026\", \"hora\": \"HH:MM\"}}]"
         )
         response = model.generate_content(prompt)
         texto = response.text.strip()
@@ -267,14 +274,13 @@ def puxar_proximos_jogos():
                     data_jogo = datetime.strptime(jogo['data'], "%d/%m/%Y")
                     dias_diferenca = (data_jogo - datetime.now()).days
                     if 0 <= dias_diferenca <= 15:
-                        # Garante estrutura do campo hora
-                        if 'hora' not in jogo:
-                            jogo['hora'] = "17:00"
+                        if 'hora' not in jogo or not jogo['hora']:
+                            jogo['hora'] = "21:00"
                         jogos_filtrados.append(jogo)
                 except Exception:
                     if "2026" in jogo['data'] and not any(m in jogo['data'] for m in ["09", "10", "11"]):
-                        if 'hora' not in jogo:
-                            jogo['hora'] = "17:00"
+                        if 'hora' not in jogo or not jogo['hora']:
+                            jogo['hora'] = "21:00"
                         jogos_filtrados.append(jogo)
             
             if jogos_filtrados:
@@ -332,7 +338,6 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
         lista_grupos = [k for k in dados_bolao.keys() if not k.startswith("_")]
         
         if lista_grupos:
-            # Define qual grupo exibir primeiro por padrão
             if st.session_state.grupo_selecionado_padrao not in lista_grupos:
                 st.session_state.grupo_selecionado_padrao = lista_grupos[0]
                 
@@ -353,13 +358,13 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
             grupo_chosen = st.session_state.grupo_selecionado_padrao
             detalhes_grupo = dados_bolao[grupo_chosen]
             
-            # --- SISTEMA DE BLOQUEIO ANTI-BATOTA (Sugestão 3) ---
+            # --- SISTEMA DE BLOQUEIO ANTI-BATOTA AUTOMÁTICO ---
             bloqueado = False
             data_hora_jogo_str = detalhes_grupo.get("data_hora_jogo", "")
             if data_hora_jogo_str:
                 try:
                     dt_jogo = datetime.strptime(data_hora_jogo_str, "%d/%m/%Y %H:%M")
-                    # Se faltar menos de 10 minutos para o jogo ou já começou, bloqueia
+                    # Se faltar menos de 10 minutos para o início oficial obtido pela IA, bloqueia
                     tempo_restante = (dt_jogo - datetime.now()).total_seconds() / 60
                     if tempo_restante < 10:
                         bloqueado = True
@@ -367,15 +372,15 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
                     pass
             
             st.markdown(f"""
-            <div class='status-box' style='margin-top: 15px;'>
+            <div class='status-box'>
                 <strong>📌 Bolão Ativo:</strong> {grupo_chosen}<br>
                 <strong>⚽ Confronto da Copa:</strong> {detalhes_grupo['jogo']}<br>
-                <strong>⏰ Hora de Início:</strong> {data_hora_jogo_str if data_hora_jogo_str else 'Não definida'}
+                <strong>⏰ Horário de Início Oficial:</strong> {detalhes_grupo.get('hora_oficial', '21:00')}h (Horário de Brasília)
             </div>
             """, unsafe_allow_html=True)
             
             if bloqueado:
-                st.error("⏰ **Apostas Trancadas!** Faltam menos de 10 minutos ou a partida já começou. Os palpites deste bolão estão encerrados para evitar batotas!")
+                st.error("⏰ **Apostas Trancadas!** A partida já começou ou está prestes a iniciar de acordo com o cronograma oficial. Os palpites foram encerrados!")
             else:
                 with st.form("form_novo_palpite"):
                     nome_participante = st.text_input("O seu Nome ou Alcunha:")
@@ -401,7 +406,7 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
                             placar_ja_existe = any(a["Palpite"] == placar_desejado for a in lista_outros)
                             
                             if placar_ja_existe:
-                                st.error(f"❌ O placar de **{placar_desejado}** já foi escolhido por outro participante neste bolão! Escolha outro resultado para competir.")
+                                st.error(f"❌ O placar de **{placar_desejado}** já foi escolhido por outro participante! Escolha outro resultado para disputar.")
                             else:
                                 novo_palpite = {
                                     "Nome": nome_limpo,
@@ -411,16 +416,16 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
                                 detalhes_grupo["apostas"] = lista_outros + [novo_palpite]
                                 
                                 salvar_banco_dados(dados_bolao)
-                                st.success(f"🎉 Palpite registrado com sucesso! Redirecionando para classificação...")
+                                st.success(f"🎉 Palpite registrado com sucesso!")
                                 
                                 mudar_aba("📊 Ver Palpites & Download", grupo_foco=grupo_chosen)
             
-            # --- CONVOCATÓRIA WHATSAPP (Sugestão 4) ---
+            # --- CONVOCATÓRIA WHATSAPP ---
             st.markdown("---")
             text_partilha = (
                 f"⚽ Deixa o teu palpite no bolão de Copa: *{grupo_chosen}*!\n"
                 f"🏟️ Jogo: *{detalhes_grupo['jogo']}*\n"
-                f"👉 Entra no app e seleciona o meu grupo. Não vale repetir placar!"
+                f"👉 Entra no app e seleciona o meu grupo!"
             )
             link_whatsapp = f"https://api.whatsapp.com/send?text={requests.utils.quote(text_partilha)}"
             st.markdown(f"[📲 Convidar Amigos no WhatsApp]({link_whatsapp})")
@@ -434,10 +439,10 @@ elif st.session_state.aba_ativa == "🛠️ Criar Novo Bolão":
     
     nome_lider = st.text_input("Quem está a criar este bolão? (Ex: Bolão do Thiago, Bolão da Gabi):")
     
-    st.markdown("#### 📅 Próximos Confrontos Reais Encontrados")
+    st.markdown("#### 📅 Próximos Confrontos Reais da Copa Encontrados")
     
     jogos_reais_selecionados = puxar_proximos_jogos()
-    opcoes_partidas = [f"{partida['confronto']} ({partida['data']})" for partida in jogos_reais_selecionados]
+    opcoes_partidas = [f"{partida['confronto']} ({partida['data']} às {partida['hora']}h)" for partida in jogos_reais_selecionados]
     
     escolha_partida = st.selectbox("Selecione qual partida será disputada no seu bolão:", opcoes_partidas)
         
@@ -447,20 +452,11 @@ elif st.session_state.aba_ativa == "🛠️ Criar Novo Bolão":
         elif nome_lider.strip() in dados_bolao:
             st.error("❌ Já existe um bolão ativo com esse nome. Escolha outro nome de grupo!")
         else:
-            # Resgata hora correspondente para salvar no bolão e aplicar anti-batota
+            # Resgata os detalhes de data e hora corretos retornados pela busca
             idx = opcoes_partidas.index(escolha_partida)
             jogo_info = jogos_reais_selecionados[idx]
+            
             data_hora_jogo = f"{jogo_info['data']} {jogo_info['hora']}"
             
             dados_bolao[nome_lider.strip()] = {
-                "jogo": escolha_partida,
-                "data_hora_jogo": data_hora_jogo,
-                "apostas": [],
-                "resultado_real": ""
-            }
-            salvar_banco_dados(dados_bolao)
-            st.success(f"✅ Bolão '{nome_lider}' criado com sucesso! Redirecionando para a área de palpites...")
-            
-            mudar_aba("🏆 Entrar & Apostar", grupo_foco=nome_lider.strip())
-
-# --- ABA 3: CLASSIFICAÇÃO & DOWNL
+    
