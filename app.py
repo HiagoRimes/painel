@@ -45,19 +45,22 @@ st.markdown("""
 """, unsafe_allow_dict=True)
 
 # --- CONFIGURAÇÃO DA API (ESTRUTURA DO SEU CÓDIGO DE ESTUDO) ---
-# Tenta primeiro usar st.secrets, se não encontrar usa a chave de teste fornecida por si
+# Procura exclusivamente pela chave nos Secrets do Streamlit
 if "GOOGLE_API_KEY" in st.secrets:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
+    try:
+        genai.configure(api_key=API_KEY)
+        api_configurada = True
+    except Exception as e:
+        st.error(f"Erro ao configurar a API do Google: {e}")
+        api_configurada = False
 else:
-    API_KEY = "AQ.Ab8RN6IN0k72vZ9vO2NgOe6Z9yJg16eP9euOkpT8uhXhSyvYUw"
-
-try:
-    genai.configure(api_key=API_KEY)
-except Exception as e:
-    st.error(f"Erro ao configurar a API do Google: {e}")
+    api_configurada = False
 
 # Método de resolução dinâmica do modelo igual ao seu código de estudo
 def get_model():
+    if not api_configurada:
+        return None
     try:
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         prioridade = ['models/gemini-2.5-flash-lite', 'models/gemini-1.5-flash', 'models/gemini-1.5-pro']
@@ -69,7 +72,10 @@ def get_model():
         # Se a listagem falhar, retorna o modelo estável padrão
         return genai.GenerativeModel('models/gemini-1.5-flash')
 
-model = get_model()
+if api_configurada:
+    model = get_model()
+else:
+    model = None
 
 # --- BANCO DE DADOS EM NUVEM COMPARTILHADO (JSONBLOB) ---
 # Esse banco armazena as informações na nuvem para que o bolão criado por si
@@ -99,6 +105,12 @@ def salvar_banco_dados(novos_dados):
 # --- CHAMADA DO GEMINI ---
 @st.cache_data(ttl=1800)  # Guarda os jogos em cache por 30 minutos
 def puxar_proximos_jogos():
+    if not model:
+        # Fallback se a API não estiver configurada
+        return [
+            {"confronto": "Brasil x Haiti", "data": datetime.now().strftime("%d/%m/%Y")},
+            {"confronto": "Brasil x Paraguai", "data": "Próxima Data FIFA"}
+        ]
     try:
         prompt = (
             "Diga quais são os próximos 2 jogos oficiais que a Seleção Brasileira de Futebol Masculina vai disputar na temporada atual. "
@@ -128,7 +140,7 @@ def puxar_proximos_jogos():
 dados_bolao = carregar_banco_dados()
 
 st.markdown("<h1 style='text-align: center; margin-bottom: 5px;'>⚽ Bolão dos Amigos da Seleção</h1>", unsafe_allow_dict=True)
-st.markdown("<p style='text-align: center; color: #666; margin-bottom: 30px;'>Crie o seu grupo de palpites, convide a galera e baixe a planilha de resultados!</p>", unsafe_allow_dict=True)
+st.markdown("<p style='text-align: center; color: #666; margin-bottom: 30px;'>Crie o seu grupo de palpites, convide a galera e guarde o ficheiro de resultados!</p>", unsafe_allow_dict=True)
 
 # Abas do aplicativo
 tab_jogar, tab_criar, tab_classificacao = st.tabs([
@@ -139,11 +151,11 @@ tab_jogar, tab_criar, tab_classificacao = st.tabs([
 
 # --- ABA 1: FAZER PALPITE ---
 with tab_jogar:
-    st.markdown("### 📝 Registrar seu Palpite")
+    st.markdown("### 📝 Registrar o seu Palpite")
     
     if dados_bolao:
         lista_grupos = list(dados_bolao.keys())
-        grupo_escolhido = st.selectbox("Selecione de quem é o bolão que você quer entrar:", lista_grupos)
+        grupo_escolhido = st.selectbox("Selecione de quem é o bolão em que quer entrar:", lista_grupos)
         
         detalhes_grupo = dados_bolao[grupo_escolhido]
         
@@ -156,7 +168,7 @@ with tab_jogar:
         """, unsafe_allow_dict=True)
         
         with st.form("form_novo_palpite"):
-            nome_participante = st.text_input("Seu Nome ou Apelido:")
+            nome_participante = st.text_input("O seu Nome ou Alcunha:")
             
             col_gols_br, col_gols_op = st.columns(2)
             gols_brasil = col_gols_br.number_input("Gols do Brasil:", min_value=0, max_value=20, value=0, step=1)
@@ -166,7 +178,7 @@ with tab_jogar:
             
             if btn_salvar_palpite:
                 if nome_participante.strip() == "":
-                    st.error("⚠️ Digite seu nome para salvar a aposta!")
+                    st.error("⚠️ Digite o seu nome para guardar a aposta!")
                 else:
                     novo_palpite = {
                         "Nome": nome_participante.strip(),
@@ -183,20 +195,25 @@ with tab_jogar:
                     
                     # Salva em nuvem
                     salvar_banco_dados(dados_bolao)
-                    st.success(f"🎉 Palpite registrado com sucesso! Boa sorte, {nome_participante}!")
+                    st.success(f"🎉 Palpite registado com sucesso! Boa sorte, {nome_participante}!")
                     st.rerun()
     else:
-        st.warning("Nenhum bolão ativo na nuvem neste momento. Vá na aba 'Criar Novo Bolão' para inaugurar a rodada!")
+        st.warning("Nenhum bolão ativo na nuvem neste momento. Vá ao separador 'Criar Novo Bolão' para inaugurar a rodada!")
 
 # --- ABA 2: CRIAR NOVO BOLÃO ---
 with tab_criar:
     st.markdown("### 🛠️ Configurar um Novo Grupo")
-    st.write("Crie uma sala nova personalizada. Seus amigos poderão selecionar o seu nome na aba de apostas!")
+    st.write("Crie uma sala nova personalizada. Os seus amigos poderão selecionar o seu nome na aba de apostas!")
     
-    nome_lider = st.text_input("Quem está criando este bolão? (Ex: Bolão do Thiago, Bolão da Gabi):")
+    nome_lider = st.text_input("Quem está a criar este bolão? (Ex: Bolão do Thiago, Bolão da Gabi):")
     
     st.markdown("#### 📅 Próximos Confrontos via Gemini")
-    lista_jogos_gemini = puxar_proximos_jogos()
+    
+    if not api_configurada:
+        st.info("💡 Chave de API 'GOOGLE_API_KEY' não foi detetada nos Secrets. O preenchimento manual está ativado por padrão.")
+        lista_jogos_gemini = []
+    else:
+        lista_jogos_gemini = puxar_proximos_jogos()
     
     # Prepara as opções vindas da busca inteligente
     opcoes_partidas = [f"{partida['confronto']} ({partida['data']})" for partida in lista_jogos_gemini]
@@ -205,7 +222,7 @@ with tab_criar:
     escolha_partida = st.selectbox("Selecione qual partida será disputada no seu bolão:", opcoes_partidas)
     
     confronto_final = ""
-    if escolha_partida == "✍️ Digitar Confronto Manualmente":
+    if escolha_partida == "✍️ Digitar Confronto Manualmente" or not api_configurada:
         col_manual_1, col_manual_2 = st.columns(2)
         time_rival = col_manual_1.text_input("Adversário do Brasil:", "Haiti")
         data_manual = col_manual_2.text_input("Data do Jogo:", "Hoje")
@@ -217,7 +234,7 @@ with tab_criar:
         if nome_lider.strip() == "":
             st.error("⚠️ Dê um nome de identificação para o seu grupo (ex: Bolão da Gabi).")
         elif nome_lider.strip() in dados_bolao:
-            st.error("❌ Já existe um bolão com esse nome ativo. Escolha outro nome de grupo!")
+            st.error("❌ Já existe um bolão ativo com esse nome. Escolha outro nome de grupo!")
         else:
             # Cria a estrutura limpa e salva
             dados_bolao[nome_lider.strip()] = {
@@ -230,7 +247,7 @@ with tab_criar:
 
 # --- ABA 3: CLASSIFICAÇÃO & DOWNLOAD ---
 with tab_classificacao:
-    st.markdown("### 📊 Palpites Registrados")
+    st.markdown("### 📊 Palpites Registados")
     
     if dados_bolao:
         grupo_resumo = st.selectbox("Selecione o grupo para auditar:", list(dados_bolao.keys()), key="select_filtro_resumo")
@@ -244,7 +261,7 @@ with tab_classificacao:
             df_palpites = df_palpites[["Nome", "Palpite", "Data Registro"]]
             st.dataframe(df_palpites, use_container_width=True)
             
-            # Conversão para download do documento CSV (para abrir no Excel)
+            # Conversão para download do ficheiro CSV (para abrir no Excel)
             csv_bytes = df_palpites.to_csv(index=False).encode('utf-8')
             
             st.download_button(
@@ -254,13 +271,16 @@ with tab_classificacao:
                 mime="text/csv",
             )
         else:
-            st.info("Nenhum palpite registrado nesta sala ainda. Seja o primeiro a apostar!")
+            st.info("Nenhum palpite registado nesta sala ainda. Seja o primeiro a apostar!")
     else:
-        st.warning("Nenhum bolão ativo registrado no sistema.")
+        st.warning("Nenhum bolão ativo registado no sistema.")
 
 # --- BARRA LATERAL ---
 st.sidebar.markdown("### ⚙️ Informações da API")
-st.sidebar.write(f"**Modelo Ativo:** {model.model_name}")
+if api_configurada and model:
+    st.sidebar.write(f"**Modelo Ativo:** {model.model_name}")
+else:
+    st.sidebar.warning("API inativa (modo manual ativo)")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🗑️ Zona de Limpeza")
