@@ -42,7 +42,7 @@ st.markdown("""
         border-left: 5px solid #009c3b;
         margin-bottom: 15px;
     }
-    /* Estilização para fazer o st.radio de navegação parecer abas elegantes */
+    /* Estilização para as pílulas de navegação superior */
     div[data-testid="stHorizontalBlock"] {
         background-color: #f0f2f6;
         padding: 8px;
@@ -209,7 +209,6 @@ def puxar_proximos_jogos():
         return fallback_jogos
 
 # --- GERENCIAMENTO DE ESTADO E NAVEGAÇÃO ---
-# Inicializa o controle de abas no Session State
 if "aba_ativa" not in st.session_state:
     st.session_state.aba_ativa = "🏆 Entrar & Apostar"
 
@@ -232,13 +231,15 @@ st.markdown("<p style='text-align: center; color: #666; margin-bottom: 25px;'>Cr
 col_nav1, col_nav2, col_nav3 = st.columns(3)
 
 with col_nav1:
-    if st.button("🏆 Entrar & Apostar", use_container_width=True, type="secondary" if st.session_state.aba_ativa != "🏆 Entrar & Apostar" else "primary"):
+    if st.button("🏆 Entrar & Apostar", use_container_width=True, type="secondary" if st.session_state.aba_active_btn != "🏆 Entrar & Apostar" else "primary", key="btn_aba_apostar"):
         mudar_aba("🏆 Entrar & Apostar")
+    # Pequeno hack visual para manter o botão colorido de acordo com a aba selecionada
+    st.session_state.aba_active_btn = st.session_state.aba_ativa
 with col_nav2:
-    if st.button("🛠️ Criar Novo Bolão", use_container_width=True, type="secondary" if st.session_state.aba_ativa != "🛠️ Criar Novo Bolão" else "primary"):
+    if st.button("🛠️ Criar Novo Bolão", use_container_width=True, type="secondary" if st.session_state.aba_active_btn != "🛠️ Criar Novo Bolão" else "primary", key="btn_aba_criar"):
         mudar_aba("🛠️ Criar Novo Bolão")
 with col_nav3:
-    if st.button("📊 Ver Palpites & Download", use_container_width=True, type="secondary" if st.session_state.aba_ativa != "📊 Ver Palpites & Download" else "primary"):
+    if st.button("📊 Ver Palpites & Download", use_container_width=True, type="secondary" if st.session_state.aba_active_btn != "📊 Ver Palpites & Download" else "primary", key="btn_aba_ver"):
         mudar_aba("📊 Ver Palpites & Download")
 
 st.markdown("---")
@@ -252,22 +253,32 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
     if dados_bolao:
         lista_grupos = list(dados_bolao.keys())
         
-        # Define qual grupo exibir primeiro (útil após redirecionamento de nova criação)
-        indice_padrao = 0
-        if st.session_state.grupo_selecionado_padrao in lista_grupos:
-            indice_padrao = lista_grupos.index(st.session_state.grupo_selecionado_padrao)
+        # Define qual grupo exibir primeiro por padrão
+        if st.session_state.grupo_selecionado_padrao not in lista_grupos:
+            st.session_state.grupo_selecionado_padrao = lista_grupos[0]
             
-        grupo_chosen = st.selectbox("Selecione de quem é o bolão em que quer entrar:", lista_grupos, index=indice_padrao)
+        st.write("🎈 **Selecione em qual bolão você deseja entrar clicando em um dos balões abaixo:**")
         
-        # Limpa o foco temporário após seleção
-        st.session_state.grupo_selecionado_padrao = grupo_chosen
-        
+        # Exibição elegante em formato de balões/pílulas (botões horizontais)
+        cols_pills = st.columns(len(lista_grupos) if len(lista_grupos) > 0 else 1)
+        for i, grupo in enumerate(lista_grupos):
+            with cols_pills[i % len(cols_pills)]:
+                # Destaca com estilo "primary" (verde) o balão selecionado correntemente
+                is_selected = (st.session_state.grupo_selecionado_padrao == grupo)
+                tipo_balao = "primary" if is_selected else "secondary"
+                
+                # O balão exibe o nome do criador
+                if st.button(f"🟢 {grupo}" if is_selected else f"⚪ {grupo}", key=f"pill_sel_{grupo}", use_container_width=True, type=tipo_balao):
+                    st.session_state.grupo_selecionado_padrao = grupo
+                    st.rerun()
+                    
+        grupo_chosen = st.session_state.grupo_selecionado_padrao
         detalhes_grupo = dados_bolao[grupo_chosen]
         
         st.markdown(f"""
-        <div class='status-box'>
-            <strong>📌 Bolão Selecionado:</strong> {grupo_chosen}<br>
-            <strong>⚽ Confronto:</strong> {detalhes_grupo['jogo']}
+        <div class='status-box' style='margin-top: 15px;'>
+            <strong>📌 Bolão Ativo:</strong> {grupo_chosen}<br>
+            <strong>⚽ Confronto da Copa:</strong> {detalhes_grupo['jogo']}
         </div>
         """, unsafe_allow_html=True)
         
@@ -342,11 +353,23 @@ elif st.session_state.aba_ativa == "📊 Ver Palpites & Download":
         lista_opcoes_resumo = list(dados_bolao.keys())
         
         # Mantém o bolão atual em exibição se houver um padrão selecionado
-        indice_resumo = 0
-        if st.session_state.grupo_selecionado_padrao in lista_opcoes_resumo:
-            indice_resumo = lista_opcoes_resumo.index(st.session_state.grupo_selecionado_padrao)
+        if st.session_state.grupo_selecionado_padrao not in lista_opcoes_resumo:
+            st.session_state.grupo_selecionado_padrao = lista_opcoes_resumo[0]
             
-        grupo_resumo = st.selectbox("Selecione o grupo para auditar:", lista_opcoes_resumo, index=indice_resumo)
+        st.write("🎈 **Selecione qual bolão deseja auditar clicando abaixo:**")
+        
+        # Mesma lógica visual de balões elegantes para selecionar o grupo que quer auditar
+        cols_pills_resumo = st.columns(len(lista_opcoes_resumo) if len(lista_opcoes_resumo) > 0 else 1)
+        for i, grupo in enumerate(lista_opcoes_resumo):
+            with cols_pills_resumo[i % len(cols_pills_resumo)]:
+                is_selected_res = (st.session_state.grupo_selecionado_padrao == grupo)
+                tipo_balao_res = "primary" if is_selected_res else "secondary"
+                
+                if st.button(f"📊 {grupo}" if is_selected_res else f"⚪ {grupo}", key=f"pill_res_{grupo}", use_container_width=True, type=tipo_balao_res):
+                    st.session_state.grupo_selecionado_padrao = grupo
+                    st.rerun()
+                    
+        grupo_resumo = st.session_state.grupo_selecionado_padrao
         dados_do_grupo = dados_bolao[grupo_resumo]
         
         st.write(f"**Partida Selecionada:** {dados_do_grupo['jogo']}")
