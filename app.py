@@ -6,8 +6,9 @@ import json
 # Configuração da Página
 st.set_page_config(page_title="Bolão da Seleção", page_icon="⚽")
 
-# Configuração segura da API do Gemini via Secrets do Streamlit
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+# Configuração Direta da API do Gemini (Chave de Teste)
+CHAVE_GEMINI = "AQ.Ab8RN6IN0k72vZ9vO2NgOe6Z9yJg16eP9euOkpT8uhXhSyvYUw"
+genai.configure(api_key=CHAVE_GEMINI)
 
 # Função para buscar os próximos 2 jogos do Brasil via Gemini
 @st.cache_data(ttl=3600)  # Guarda o resultado por 1 hora para economizar API
@@ -76,7 +77,7 @@ with aba_apostar:
                 else:
                     nova_aposta = {
                         "Nome": nome_apostador,
-                        "Placar": f"{placar_br} x {placar_rival}"
+                        "Palpite": f"{placar_br} x {placar_rival}"
                     }
                     st.session_state.boloes[bolao_selecionado]["apostas"].append(nova_aposta)
                     st.success(f"Aposta registrada com sucesso no grupo: {bolao_selecionado}!")
@@ -109,7 +110,7 @@ with aba_criar:
                 }
                 st.success(f"Pronto! O '{nome_criador}' foi criado para o jogo {jogo_escolhido}. Seus amigos já podem apostar nele na Aba 1.")
     else:
-        st.error("O Gemini não conseguiu listar jogos no momento. Verifique seus Logs ou Chave de API.")
+        st.error("O Gemini não conseguiu listar jogos no momento. Verifique se a sua chave de teste ainda está ativa.")
 
 # --- ABA 3: RESULTADOS E DOWNLOAD DOC ---
 with aba_resultados:
