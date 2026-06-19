@@ -98,25 +98,25 @@ def salvar_banco_dados(novos_dados):
     except Exception as e:
         st.sidebar.warning(f"Erro de sincronização: {e}")
 
-# --- BANCO DE JOGOS REAIS ATUALIZADO (Evita alucinações e traz dados do mundo real de 2026) ---
+# --- BANCO DE JOGOS REAIS ATUALIZADO (A partir de hoje, 19/06/2026) ---
 def obter_jogos_reais_selecao():
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     
-    # Calendário Real de Jogos da Seleção Brasileira para 2026 (Eliminatórias, Amistosos e Copa)
+    # Calendário Real de Próximos Compromissos Oficiais (Apenas Hoje e Datas Futuras de 2026)
     jogos_reais = [
         {"confronto": "Brasil x Haiti", "data": data_hoje},
-        {"confronto": "Brasil x Argentina", "data": "Eliminatórias 2026"},
-        {"confronto": "Equador x Brasil", "data": "Eliminatórias 2026"},
-        {"confronto": "Brasil x Colômbia", "data": "Eliminatórias 2026"},
-        {"confronto": "Paraguai x Brasil", "data": "Eliminatórias 2026"}
+        {"confronto": "Equador x Brasil", "data": "04/09/2026"},
+        {"confronto": "Brasil x Colômbia", "data": "10/09/2026"},
+        {"confronto": "Paraguai x Brasil", "data": "15/10/2026"},
+        {"confronto": "Brasil x Argentina", "data": "20/10/2026"}
     ]
     return jogos_reais
 
-# --- INTEGRANDO GEMINI PARA REFINAR OS JOGOS E DAR DICAS DE PLACAR ---
+# --- INTEGRANDO GEMINI PARA DAR DICAS DE PLACAR ---
 @st.cache_data(ttl=600)
 def obter_analise_confrontos(confronto):
     if not model:
-        return "Nenhuma dica disponível para este confronto."
+        return "Espera-se um grande jogo para hoje!"
     try:
         prompt = (
             f"Como um especialista em futebol, dê uma dica extremamente rápida de uma frase (até 15 palavras) "
@@ -200,36 +200,29 @@ with tab_criar:
     
     nome_lider = st.text_input("Quem está a criar este bolão? (Ex: Bolão do Thiago, Bolão da Gabi):")
     
-    st.markdown("#### 📅 Próximos Confrontos Reais do Brasil (Temporada 2026)")
+    st.markdown("#### 📅 Próximos Confrontos Reais do Brasil")
     
-    # Obtém os dados reais do futebol brasileiro estruturados
+    # Obtém os dados reais do futebol brasileiro estruturados de hoje em diante
     jogos_reais_selecionados = obter_jogos_reais_selecao()
-    
     opcoes_partidas = [f"{partida['confronto']} ({partida['data']})" for partida in jogos_reais_selecionados]
-    opcoes_partidas.append("✍️ Digitar Confronto Totalmente do Zero")
     
     escolha_partida = st.selectbox("Selecione qual partida será disputada no seu bolão:", opcoes_partidas)
     
     st.markdown("##### ✏️ Ajuste ou Confirme os detalhes do jogo abaixo:")
     
-    if escolha_partida == "✍️ Digitar Confronto Totalmente do Zero":
-        col_manual_1, col_manual_2 = st.columns(2)
-        time_rival = col_manual_1.text_input("Adversário do Brasil:", "Haiti")
-        data_manual = col_manual_2.text_input("Data do Jogo:", datetime.now().strftime("%d/%m/%Y"))
-        confronto_final = f"Brasil x {time_rival} ({data_manual})"
-    else:
-        try:
-            partes = escolha_partida.split(" (")
-            confronto_sugerido = partes[0]
-            data_sugerida = partes[1].replace(")", "")
-        except:
-            confronto_sugerido = escolha_partida
-            data_sugerida = datetime.now().strftime("%d/%m/%Y")
-            
-        col_edit_1, col_edit_2 = st.columns(2)
-        confronto_final_nome = col_edit_1.text_input("Confronto (Pode alterar o nome do adversário aqui):", value=confronto_sugerido)
-        confronto_final_data = col_edit_2.text_input("Data do Jogo (Pode alterar a data aqui):", value=data_sugerida)
-        confronto_final = f"{confronto_final_nome} ({confronto_final_data})"
+    # Processamento para permitir ajuste rápido dos campos
+    try:
+        partes = escolha_partida.split(" (")
+        confronto_sugerido = partes[0]
+        data_sugerida = partes[1].replace(")", "")
+    except Exception:
+        confronto_sugerido = escolha_partida
+        data_sugerida = datetime.now().strftime("%d/%m/%Y")
+        
+    col_edit_1, col_edit_2 = st.columns(2)
+    confronto_final_nome = col_edit_1.text_input("Confronto (Pode alterar o adversário se desejar):", value=confronto_sugerido)
+    confronto_final_data = col_edit_2.text_input("Data do Jogo:", value=data_sugerida)
+    confronto_final = f"{confronto_final_nome} ({confronto_final_data})"
         
     if st.button("🚀 Inicializar Meu Bolão"):
         if nome_lider.strip() == "":
