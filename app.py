@@ -45,7 +45,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- CONFIGURAÇÃO DA API (ESTRUTURA DO SEU CÓDIGO DE ESTUDO) ---
-# Procura exclusivamente pela chave nos Secrets do Streamlit
 if "GOOGLE_API_KEY" in st.secrets:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
     try:
@@ -69,7 +68,6 @@ def get_model():
                 return genai.GenerativeModel(p)
         return genai.GenerativeModel(models[0])
     except Exception:
-        # Se a listagem falhar, retorna o modelo estável padrão
         return genai.GenerativeModel('models/gemini-1.5-flash')
 
 if api_configurada:
@@ -101,30 +99,23 @@ def salvar_banco_dados(novos_dados):
         st.sidebar.warning(f"Erro de sincronização: {e}")
 
 # --- CHAMADA DO GEMINI ---
-@st.cache_data(ttl=600)  # Reduzido para 10 minutos para capturar mudanças rápidas de jogos
+@st.cache_data(ttl=600)
 def puxar_proximos_jogos():
     data_hoje = datetime.now().strftime("%d/%m/%Y")
-    
     if not model:
-        # Fallback padrão caso a API não esteja configurada
         return [
             {"confronto": "Brasil x Haiti", "data": data_hoje},
-            {"confronto": "Brasil x Paraguai", "data": "Próxima Data FIFA"}
+            {"confronto": "Brasil x Paraguai", "data": "A definir"}
         ]
     try:
-        # Forçamos o prompt a entender o contexto temporal de hoje para evitar puxar dados antigos de 2024
         prompt = (
-            f"Hoje é dia {data_hoje}. Baseando-se no calendário esportivo mais recente disponível para a temporada de futebol de 2026, "
-            "liste os próximos 2 jogos oficiais (ou amistosos iminentes) que a Seleção Brasileira de Futebol Masculina vai disputar a partir de hoje. "
-            "Se houver um jogo programado para hoje (como Brasil x Haiti), ele deve ser obrigatoriamente o primeiro item da lista. "
+            "Escreva uma estimativa dos próximos 2 jogos da Seleção Brasileira de Futebol Masculina. "
             "Responda estritamente em um formato de array JSON válido com as chaves 'confronto' e 'data'. "
-            "Não adicione marcações markdown, comentários ou blocos de código. "
-            "Exemplo de formato: [{'confronto': 'Brasil x Haiti', 'data': '19/06/2026'}, {'confronto': 'Brasil x Argentina', 'data': '23/06/2026'}]"
+            "Exemplo: [{'confronto': 'Brasil x Haiti', 'data': 'Hoje'}, {'confronto': 'Brasil x Argentina', 'data': 'Breve'}]"
         )
         response = model.generate_content(prompt)
         texto = response.text.strip()
         
-        # Limpeza caso o modelo ignore as instruções e retorne marcações markdown
         if texto.startswith("```json"):
             texto = texto[7:]
         if texto.endswith("```"):
@@ -133,10 +124,9 @@ def puxar_proximos_jogos():
         
         return json.loads(texto)
     except Exception:
-        # Fallback de segurança se o modelo gerar uma resposta instável ou falhar
         return [
             {"confronto": "Brasil x Haiti", "data": data_hoje},
-            {"confronto": "Brasil x Uruguai", "data": "Próxima Rodada"}
+            {"confronto": "Brasil x Uruguai", "data": "Breve"}
         ]
 
 # --- LÓGICA PRINCIPAL DO APLICATIVO ---
@@ -158,14 +148,13 @@ with tab_jogar:
     
     if dados_bolao:
         lista_grupos = list(dados_bolao.keys())
-        grupo_escolhido = st.selectbox("Selecione de quem é o bolão em que quer entrar:", lista_grupos)
+        grupo_chosen = st.selectbox("Selecione de quem é o bolão em que quer entrar:", lista_grupos)
         
-        detalhes_grupo = dados_bolao[grupo_escolhido]
+        detalhes_grupo = dados_bolao[grupo_chosen]
         
-        # Caixa informativa destacando o jogo selecionado
         st.markdown(f"""
         <div class='status-box'>
-            <strong>📌 Bolão Selecionado:</strong> {grupo_escolhido}<br>
+            <strong>📌 Bolão Selecionado:</strong> {grupo_chosen}<br>
             <strong>⚽ Confronto:</strong> {detalhes_grupo['jogo']}
         </div>
         """, unsafe_allow_html=True)
@@ -189,14 +178,12 @@ with tab_jogar:
                         "Data Registro": datetime.now().strftime("%d/%m/%Y %H:%M")
                     }
                     
-                    # Evita que a mesma pessoa duplique palpites no mesmo grupo
                     lista_apostas = detalhes_grupo["apostas"]
                     detalhes_grupo["apostas"] = [
                         a for a in lista_apostas if a["Nome"].lower() != nome_participante.strip().lower()
                     ]
                     detalhes_grupo["apostas"].append(novo_palpite)
                     
-                    # Salva em nuvem
                     salvar_banco_dados(dados_bolao)
                     st.success(f"🎉 Palpite registado com sucesso! Boa sorte, {nome_participante}!")
                     st.rerun()
@@ -210,28 +197,50 @@ with tab_criar:
     
     nome_lider = st.text_input("Quem está a criar este bolão? (Ex: Bolão do Thiago, Bolão da Gabi):")
     
-    st.markdown("#### 📅 Próximos Confrontos via Gemini")
+    st.markdown("#### 📅 Próximos Confrontos Sugeridos pelo Gemini")
     
     if not api_configurada:
-        st.info("💡 Chave de API 'GOOGLE_API_KEY' não foi detetada nos Secrets. O preenchimento manual está ativado por padrão.")
         lista_jogos_gemini = []
     else:
         lista_jogos_gemini = puxar_proximos_jogos()
     
-    # Prepara as opções vindas da busca inteligente
-    opcoes_partidas = [f"{partida['confronto']} ({partida['data']})" for partida in lista_jogos_gemini]
-    opcoes_partidas.append("✍️ Digitar Confronto Manualmente")
+    # Adicionamos uma opção padrão para o Haiti ou manual de forma direta nas opções do selectbox
+    opcoes_partidas = []
+    if lista_jogos_gemini:
+        for partida in lista_jogos_gemini:
+            opcoes_partidas.append(f"{partida['confronto']} ({partida['data']})")
     
-    escolha_partida = st.selectbox("Selecione qual partida será disputada no seu bolão:", opcoes_partidas)
+    # Se "Brasil x Haiti" não estiver na resposta da IA, nós forçamos como uma sugestão rápida no topo
+    sugestao_haiti = f"Brasil x Haiti ({datetime.now().strftime('%d/%m/%Y')})"
+    if sugestao_haiti not in opcoes_partidas:
+        opcoes_partidas.insert(0, sugestao_haiti)
+        
+    opcoes_partidas.append("✍️ Digitar Confronto Totalmente do Zero")
     
-    confronto_final = ""
-    if escolha_partida == "✍️ Digitar Confronto Manualmente" or not api_configurada:
+    escolha_partida = st.selectbox("Selecione ou edite uma partida para o seu bolão:", opcoes_partidas)
+    
+    # --- NOVO RECURSO DE CORREÇÃO EM TEMPO REAL ---
+    st.markdown("##### ✏️ Ajuste ou Confirme os detalhes do jogo abaixo:")
+    
+    if escolha_partida == "✍️ Digitar Confronto Totalmente do Zero":
         col_manual_1, col_manual_2 = st.columns(2)
         time_rival = col_manual_1.text_input("Adversário do Brasil:", "Haiti")
         data_manual = col_manual_2.text_input("Data do Jogo:", datetime.now().strftime("%d/%m/%Y"))
         confronto_final = f"Brasil x {time_rival} ({data_manual})"
     else:
-        confronto_final = escolha_partida
+        # Se escolheu um jogo sugerido, nós separamos o texto para que o usuário possa editar livremente se a IA alucinar!
+        try:
+            partes = escolha_partida.split(" (")
+            confronto_sugerido = partes[0]
+            data_sugerida = partes[1].replace(")", "")
+        except:
+            confronto_sugerido = escolha_partida
+            data_sugerida = datetime.now().strftime("%d/%m/%Y")
+            
+        col_edit_1, col_edit_2 = st.columns(2)
+        confronto_final_nome = col_edit_1.text_input("Confronto (Pode alterar o nome do adversário aqui):", value=confronto_sugerido)
+        confronto_final_data = col_edit_2.text_input("Data do Jogo (Pode alterar a data aqui):", value=data_sugerida)
+        confronto_final = f"{confronto_final_nome} ({confronto_final_data})"
         
     if st.button("🚀 Inicializar Meu Bolão"):
         if nome_lider.strip() == "":
@@ -239,7 +248,6 @@ with tab_criar:
         elif nome_lider.strip() in dados_bolao:
             st.error("❌ Já existe um bolão ativo com esse nome. Escolha outro nome de grupo!")
         else:
-            # Cria a estrutura limpa e salva
             dados_bolao[nome_lider.strip()] = {
                 "jogo": confronto_final,
                 "apostas": []
@@ -264,7 +272,6 @@ with tab_classificacao:
             df_palpites = df_palpites[["Nome", "Palpite", "Data Registro"]]
             st.dataframe(df_palpites, use_container_width=True)
             
-            # Conversão para download do ficheiro CSV (para abrir no Excel)
             csv_bytes = df_palpites.to_csv(index=False).encode('utf-8')
             
             st.download_button(
