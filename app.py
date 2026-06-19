@@ -33,11 +33,11 @@ def salvar(dados):
     st.session_state.dados = dados
 
 if "dados" not in st.session_state: st.session_state.dados = carregar()
+if "aba_ativa" not in st.session_state: st.session_state.aba_ativa = "🏆 Entrar & Apostar"
+if "grupo_sel" not in st.session_state: st.session_state.grupo_sel = None
 
 # --- NAVEGAÇÃO ---
 st.markdown("<h1 style='text-align: center;'>⚽ Bolão dos Amigos da Seleção</h1>", unsafe_allow_html=True)
-
-if "aba_ativa" not in st.session_state: st.session_state.aba_ativa = "🏆 Entrar & Apostar"
 
 c1, c2, c3 = st.columns(3)
 if c1.button("🏆 Entrar & Apostar", use_container_width=True, type="primary" if st.session_state.aba_ativa == "🏆 Entrar & Apostar" else "secondary"): 
@@ -52,11 +52,10 @@ st.markdown("---")
 # --- LÓGICA DE EXECUÇÃO ---
 if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
     st.subheader("📝 Registrar o seu Palpite")
-    if not st.session_state.dados: st.warning("Nenhum bolão ativo. Crie um na aba correspondente.")
+    if not st.session_state.dados: st.warning("Nenhum bolão ativo.")
     else:
-        # Pílulas de seleção
         lista = list(st.session_state.dados.keys())
-        if "grupo_sel" not in st.session_state: st.session_state.grupo_sel = lista[0]
+        if st.session_state.grupo_sel not in lista: st.session_state.grupo_sel = lista[0]
         
         cols = st.columns(len(lista))
         for i, g in enumerate(lista):
@@ -67,23 +66,31 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
         d = st.session_state.dados[grupo]
         st.markdown(f"<div class='status-box'>📌 <strong>Bolão Ativo:</strong> {grupo} | ⚽ <strong>Confronto:</strong> {d['jogo']}</div>", unsafe_allow_html=True)
         
-        with st.form("aposta"):
+        with st.form("aposta", clear_on_submit=True):
             nome = st.text_input("Seu Nome ou Alcunha:")
             c_g1, c_g2 = st.columns(2)
             br = c_g1.number_input("Gols do Brasil:", 0, 20)
             op = c_g2.number_input("Gols do Adversário:", 0, 20)
+            
             if st.form_submit_button("Confirmar Palpite"):
-                st.session_state.dados[grupo]['apostas'].append({"Nome": nome, "Palpite": f"{br} x {op}", "Data": datetime.now().strftime("%d/%m %H:%M")})
+                novo_palpite = {"Nome": nome, "Palpite": f"{br} x {op}", "Data": datetime.now().strftime("%d/%m %H:%M")}
+                
+                # Previne duplicata verificando se o nome já existe na lista
+                d['apostas'] = [a for a in d['apostas'] if a['Nome'] != nome] + [novo_palpite]
+                
                 salvar(st.session_state.dados)
-                st.success("Palpite registrado!"); st.rerun()
+                st.session_state.aba_ativa = "📊 Ver Palpites & Download"
+                st.rerun()
 
 elif st.session_state.aba_ativa == "🛠️ Criar Novo Bolão":
     nome = st.text_input("Nome do Bolão:")
     jogo = st.selectbox("Jogo:", ["Brasil x Haiti (19/06/2026)", "Brasil x Escócia (24/06/2026)"])
     if st.button("🚀 Inicializar Meu Bolão"):
-        st.session_state.dados[nome] = {"jogo": jogo, "apostas": [], "resultado": ""}
-        salvar(st.session_state.dados)
-        st.session_state.aba_ativa = "🏆 Entrar & Apostar"; st.rerun()
+        if nome and nome not in st.session_state.dados:
+            st.session_state.dados[nome] = {"jogo": jogo, "apostas": [], "resultado": ""}
+            salvar(st.session_state.dados)
+            st.session_state.aba_ativa = "🏆 Entrar & Apostar"; st.rerun()
+        else: st.error("Nome inválido ou já existe!")
 
 elif st.session_state.aba_ativa == "📊 Ver Palpites & Download":
     if not st.session_state.dados: st.info("Nada a exibir.")
@@ -91,8 +98,13 @@ elif st.session_state.aba_ativa == "📊 Ver Palpites & Download":
         grupo = st.selectbox("Selecione o grupo:", list(st.session_state.dados.keys()))
         df = pd.DataFrame(st.session_state.dados[grupo]['apostas'])
         if not df.empty: st.table(df)
-        else: st.write("Nenhum palpite ainda.")
+        
+        if st.checkbox("🔑 Administrar"):
+            res = st.text_input("Resultado Real (ex: 2 x 0):")
+            if st.button("Salvar Resultado"):
+                st.session_state.dados[grupo]['resultado'] = res
+                salvar(st.session_state.dados); st.rerun()
 
-# Rodapé WhatsApp
 st.markdown("---")
-st.link_button("📲 Convidar amigos no WhatsApp", f"https://api.whatsapp.com/send?text=Aposte no meu Bolão! https://bolaodobrasil.streamlit.app/")
+link_whats = f"https://api.whatsapp.com/send?text=Aposte no meu Bolão! Acesse: https://bolaodobrasil.streamlit.app/"
+st.link_button("📲 Convidar amigos no WhatsApp", link_whats)
