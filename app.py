@@ -42,7 +42,7 @@ st.markdown("""
         margin-bottom: 15px;
     }
     </style>
-""", unsafe_allow_dict=True)
+""", unsafe_allow_html=True)
 
 # --- CONFIGURAÇÃO DA API (ESTRUTURA DO SEU CÓDIGO DE ESTUDO) ---
 # Procura exclusivamente pela chave nos Secrets do Streamlit
@@ -139,8 +139,8 @@ def puxar_proximos_jogos():
 # --- LÓGICA PRINCIPAL DO APLICATIVO ---
 dados_bolao = carregar_banco_dados()
 
-st.markdown("<h1 style='text-align: center; margin-bottom: 5px;'>⚽ Bolão dos Amigos da Seleção</h1>", unsafe_allow_dict=True)
-st.markdown("<p style='text-align: center; color: #666; margin-bottom: 30px;'>Crie o seu grupo de palpites, convide a galera e guarde o ficheiro de resultados!</p>", unsafe_allow_dict=True)
+st.markdown("<h1 style='text-align: center; margin-bottom: 5px;'>⚽ Bolão dos Amigos da Seleção</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #666; margin-bottom: 30px;'>Crie o seu grupo de palpites, convide a galera e guarde o ficheiro de resultados!</p>", unsafe_allow_html=True)
 
 # Abas do aplicativo
 tab_jogar, tab_criar, tab_classificacao = st.tabs([
@@ -165,7 +165,7 @@ with tab_jogar:
             <strong>📌 Bolão Selecionado:</strong> {grupo_escolhido}<br>
             <strong>⚽ Confronto:</strong> {detalhes_grupo['jogo']}
         </div>
-        """, unsafe_allow_dict=True)
+        """, unsafe_allow_html=True)
         
         with st.form("form_novo_palpite"):
             nome_participante = st.text_input("O seu Nome ou Alcunha:")
