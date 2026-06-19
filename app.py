@@ -3,7 +3,7 @@ import pandas as pd
 import google.generativeai as genai
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, time
 from fpdf import FPDF
 
 # --- CONFIGURAÇÃO VISUAL PREMIUM DA PÁGINA ---
@@ -121,7 +121,7 @@ def get_model():
     if not api_configurada:
         return None
     try:
-        # Força o carregamento do modelo estável habilitando a pesquisa em tempo real do Google
+        # Habilita o modelo de busca nativa do Gemini
         return genai.GenerativeModel(
             model_name='models/gemini-1.5-flash',
             tools='google_search_retrieval'
@@ -184,7 +184,7 @@ def calcular_pontos(palpite, resultado_real):
     return 0
 
 # --- GERADOR DE RELATÓRIO EM PDF ---
-def gerar_pdf_bolao(nome_grupo, confronto, apostas):
+def gerar_pdf_bolao(nome_grupo, confronto, apostas, resultado_real=None):
     pdf = FPDF()
     pdf.add_page()
     
@@ -199,15 +199,18 @@ def gerar_pdf_bolao(nome_grupo, confronto, apostas):
     pdf.set_text_color(50, 50, 50)
     pdf.set_font("Helvetica", "I", 11)
     pdf.cell(0, 8, f"Confronto: {confronto}", ln=True, align="C")
+    if resultado_real:
+         pdf.cell(0, 8, f"Resultado Final: {resultado_real}", ln=True, align="C")
     pdf.cell(0, 8, f"Relatorio gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
     pdf.ln(10)
     
     pdf.set_fill_color(0, 156, 59)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(80, 10, " Nome do Apostador", border=1, fill=True)
-    pdf.cell(40, 10, " Palpite", border=1, fill=True, align="C")
-    pdf.cell(60, 10, " Data/Hora Registro", border=1, fill=True, align="C")
+    pdf.cell(70, 10, " Nome do Apostador", border=1, fill=True)
+    pdf.cell(30, 10, " Palpite", border=1, fill=True, align="C")
+    pdf.cell(50, 10, " Data/Hora Registro", border=1, fill=True, align="C")
+    pdf.cell(40, 10, " Pontos", border=1, fill=True, align="C")
     pdf.ln()
     
     pdf.set_text_color(0, 0, 0)
@@ -224,9 +227,14 @@ def gerar_pdf_bolao(nome_grupo, confronto, apostas):
         palpite = aposta.get("Palpite", "").encode('latin-1', 'replace').decode('latin-1')
         data_reg = aposta.get("Data Registro", "").encode('latin-1', 'replace').decode('latin-1')
         
-        pdf.cell(80, 10, f" {nome}", border=1, fill=True)
-        pdf.cell(40, 10, f" {palpite}", border=1, fill=True, align="C")
-        pdf.cell(60, 10, f" {data_reg}", border=1, fill=True, align="C")
+        pontos_aposta = 0
+        if resultado_real:
+            pontos_aposta = calcular_pontos(palpite, resultado_real)
+            
+        pdf.cell(70, 10, f" {nome}", border=1, fill=True)
+        pdf.cell(30, 10, f" {palpite}", border=1, fill=True, align="C")
+        pdf.cell(50, 10, f" {data_reg}", border=1, fill=True, align="C")
+        pdf.cell(40, 10, f" {pontos_aposta} pts", border=1, fill=True, align="C")
         pdf.ln()
         color_toggle = not color_toggle
         
@@ -247,7 +255,6 @@ def puxar_proximos_jogos():
         return fallback_jogos
         
     try:
-        # Prompt de busca ao vivo super restritivo que exige os horários oficiais locais
         prompt = (
             f"Hoje é dia {data_hoje}. Faça uma pesquisa rigorosa no Google e extraia a lista real "
             f"de jogos oficiais da Seleção Brasileira Masculina de Futebol na Copa do Mundo de 2026 "
@@ -364,7 +371,6 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
             if data_hora_jogo_str:
                 try:
                     dt_jogo = datetime.strptime(data_hora_jogo_str, "%d/%m/%Y %H:%M")
-                    # Se faltar menos de 10 minutos para o início oficial obtido pela IA, bloqueia
                     tempo_restante = (dt_jogo - datetime.now()).total_seconds() / 60
                     if tempo_restante < 10:
                         bloqueado = True
@@ -420,12 +426,13 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
                                 
                                 mudar_aba("📊 Ver Palpites & Download", grupo_foco=grupo_chosen)
             
-            # --- CONVOCATÓRIA WHATSAPP ---
+            # --- CONVOCATÓRIA WHATSAPP CORRIGIDA ---
             st.markdown("---")
             text_partilha = (
-                f"⚽ Deixa o teu palpite no bolão de Copa: *{grupo_chosen}*!\n"
+                f"⚽ Deixe o seu palpite no meu bolão: *{grupo_chosen}*!\n"
                 f"🏟️ Jogo: *{detalhes_grupo['jogo']}*\n"
-                f"👉 Entra no app e seleciona o meu grupo!"
+                f"🔗 Acesse aqui para apostar: https://bolaodobrasil.streamlit.app/\n"
+                f"👉 Selecione o meu grupo e dê seu palpite antes do início!"
             )
             link_whatsapp = f"https://api.whatsapp.com/send?text={requests.utils.quote(text_partilha)}"
             st.markdown(f"[📲 Convidar Amigos no WhatsApp]({link_whatsapp})")
@@ -444,19 +451,12 @@ elif st.session_state.aba_ativa == "🛠️ Criar Novo Bolão":
     jogos_reais_selecionados = puxar_proximos_jogos()
     opcoes_partidas = [f"{partida['confronto']} ({partida['data']} às {partida['hora']}h)" for partida in jogos_reais_selecionados]
     
-    escolha_partida = st.selectbox("Selecione qual partida será disputada no seu bolão:", opcoes_partidas)
-        
-    if st.button("🚀 Inicializar Meu Bolão"):
-        if nome_lider.strip() == "":
-            st.error("⚠️ Dê um nome de identificação para o seu grupo (ex: Bolão da Gabi).")
-        elif nome_lider.strip() in dados_bolao:
-            st.error("❌ Já existe um bolão ativo com esse nome. Escolha outro nome de grupo!")
-        else:
-            # Resgata os detalhes de data e hora corretos retornados pela busca
-            idx = opcoes_partidas.index(escolha_partida)
-            jogo_info = jogos_reais_selecionados[idx]
+    if opcoes_partidas:
+        escolha_partida = st.selectbox("Selecione qual partida será disputada no seu bolão:", opcoes_partidas)
             
-            data_hora_jogo = f"{jogo_info['data']} {jogo_info['hora']}"
-            
-            dados_bolao[nome_lider.strip()] = {
-    
+        if st.button("🚀 Inicializar Meu Bolão"):
+            if nome_lider.strip() == "":
+                st.error("⚠️ Dê um nome de identificação para o seu grupo (ex: Bolão da Gabi).")
+            elif nome_lider.strip() in dados_bolao:
+                st.error("❌ Já existe um bolão ativo com esse nome. Escolha outro nome de grupo!")
+         
