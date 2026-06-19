@@ -231,15 +231,19 @@ st.markdown("<p style='text-align: center; color: #666; margin-bottom: 25px;'>Cr
 col_nav1, col_nav2, col_nav3 = st.columns(3)
 
 with col_nav1:
-    if st.button("🏆 Entrar & Apostar", use_container_width=True, type="secondary" if st.session_state.aba_active_btn != "🏆 Entrar & Apostar" else "primary", key="btn_aba_apostar"):
+    # Determinamos dinamicamente se o botão deve ser "primary" (Verde ativo) ou "secondary" (Cinza)
+    tipo_bt_apostar = "primary" if st.session_state.aba_ativa == "🏆 Entrar & Apostar" else "secondary"
+    if st.button("🏆 Entrar & Apostar", use_container_width=True, type=tipo_bt_apostar, key="btn_aba_apostar"):
         mudar_aba("🏆 Entrar & Apostar")
-    # Pequeno hack visual para manter o botão colorido de acordo com a aba selecionada
-    st.session_state.aba_active_btn = st.session_state.aba_ativa
+        
 with col_nav2:
-    if st.button("🛠️ Criar Novo Bolão", use_container_width=True, type="secondary" if st.session_state.aba_active_btn != "🛠️ Criar Novo Bolão" else "primary", key="btn_aba_criar"):
+    tipo_bt_criar = "primary" if st.session_state.aba_ativa == "🛠️ Criar Novo Bolão" else "secondary"
+    if st.button("🛠️ Criar Novo Bolão", use_container_width=True, type=tipo_bt_criar, key="btn_aba_criar"):
         mudar_aba("🛠️ Criar Novo Bolão")
+        
 with col_nav3:
-    if st.button("📊 Ver Palpites & Download", use_container_width=True, type="secondary" if st.session_state.aba_active_btn != "📊 Ver Palpites & Download" else "primary", key="btn_aba_ver"):
+    tipo_bt_ver = "primary" if st.session_state.aba_ativa == "📊 Ver Palpites & Download" else "secondary"
+    if st.button("📊 Ver Palpites & Download", use_container_width=True, type=tipo_bt_ver, key="btn_aba_ver"):
         mudar_aba("📊 Ver Palpites & Download")
 
 st.markdown("---")
@@ -263,7 +267,6 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
         cols_pills = st.columns(len(lista_grupos) if len(lista_grupos) > 0 else 1)
         for i, grupo in enumerate(lista_grupos):
             with cols_pills[i % len(cols_pills)]:
-                # Destaca com estilo "primary" (verde) o balão selecionado correntemente
                 is_selected = (st.session_state.grupo_selecionado_padrao == grupo)
                 tipo_balao = "primary" if is_selected else "secondary"
                 
@@ -313,7 +316,7 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
                     # Redireciona na hora para a aba de resultados
                     mudar_aba("📊 Ver Palpites & Download", grupo_foco=grupo_chosen)
     else:
-        st.warning("Nenhum bolão ativo na nuvem neste momento. Vá para a aba 'Criar Novo Bolão' para inaugurar a rodada!")
+        st.warning("Nenhum bolão ativo na nuvem neste momento. Vá para a aba 'Criar Novo Bolão' para começar!")
 
 # --- ABA 2: CRIAR NOVO BOLÃO ---
 elif st.session_state.aba_ativa == "🛠️ Criar Novo Bolão":
