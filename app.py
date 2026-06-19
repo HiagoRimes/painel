@@ -78,8 +78,6 @@ else:
     model = None
 
 # --- BANCO DE DADOS EM NUVEM COMPARTILHADO (JSONBLOB) ---
-# Esse banco armazena as informações na nuvem para que o bolão criado por si
-# apareça em tempo real no telemóvel da sua namorada e dos seus amigos!
 DATABASE_URL = "https://jsonblob.com/api/jsonBlob/1319022513903362048"
 
 def carregar_banco_dados():
@@ -103,25 +101,30 @@ def salvar_banco_dados(novos_dados):
         st.sidebar.warning(f"Erro de sincronização: {e}")
 
 # --- CHAMADA DO GEMINI ---
-@st.cache_data(ttl=1800)  # Guarda os jogos em cache por 30 minutos
+@st.cache_data(ttl=600)  # Reduzido para 10 minutos para capturar mudanças rápidas de jogos
 def puxar_proximos_jogos():
+    data_hoje = datetime.now().strftime("%d/%m/%Y")
+    
     if not model:
-        # Fallback se a API não estiver configurada
+        # Fallback padrão caso a API não esteja configurada
         return [
-            {"confronto": "Brasil x Haiti", "data": datetime.now().strftime("%d/%m/%Y")},
+            {"confronto": "Brasil x Haiti", "data": data_hoje},
             {"confronto": "Brasil x Paraguai", "data": "Próxima Data FIFA"}
         ]
     try:
+        # Forçamos o prompt a entender o contexto temporal de hoje para evitar puxar dados antigos de 2024
         prompt = (
-            "Diga quais são os próximos 2 jogos oficiais que a Seleção Brasileira de Futebol Masculina vai disputar na temporada atual. "
-            "Responda estritamente em um array JSON com objetos contendo 'confronto' e 'data'. "
-            "Não use blocos de código markdown ou texto explicativo, retorne apenas o JSON limpo. "
-            "Exemplo: [{'confronto': 'Brasil x Haiti', 'data': '19/06/2026'}, {'confronto': 'Brasil x Argentina', 'data': '25/06/2026'}]"
+            f"Hoje é dia {data_hoje}. Baseando-se no calendário esportivo mais recente disponível para a temporada de futebol de 2026, "
+            "liste os próximos 2 jogos oficiais (ou amistosos iminentes) que a Seleção Brasileira de Futebol Masculina vai disputar a partir de hoje. "
+            "Se houver um jogo programado para hoje (como Brasil x Haiti), ele deve ser obrigatoriamente o primeiro item da lista. "
+            "Responda estritamente em um formato de array JSON válido com as chaves 'confronto' e 'data'. "
+            "Não adicione marcações markdown, comentários ou blocos de código. "
+            "Exemplo de formato: [{'confronto': 'Brasil x Haiti', 'data': '19/06/2026'}, {'confronto': 'Brasil x Argentina', 'data': '23/06/2026'}]"
         )
         response = model.generate_content(prompt)
         texto = response.text.strip()
         
-        # Limpeza caso o modelo inclua formatação markdown
+        # Limpeza caso o modelo ignore as instruções e retorne marcações markdown
         if texto.startswith("```json"):
             texto = texto[7:]
         if texto.endswith("```"):
@@ -130,10 +133,10 @@ def puxar_proximos_jogos():
         
         return json.loads(texto)
     except Exception:
-        # Se houver qualquer falha ou expiração de chave, usa dados padrão para o jogo não parar
+        # Fallback de segurança se o modelo gerar uma resposta instável ou falhar
         return [
-            {"confronto": "Brasil x Haiti", "data": datetime.now().strftime("%d/%m/%Y")},
-            {"confronto": "Brasil x Paraguai", "data": "Próxima Data FIFA"}
+            {"confronto": "Brasil x Haiti", "data": data_hoje},
+            {"confronto": "Brasil x Uruguai", "data": "Próxima Rodada"}
         ]
 
 # --- LÓGICA PRINCIPAL DO APLICATIVO ---
@@ -225,7 +228,7 @@ with tab_criar:
     if escolha_partida == "✍️ Digitar Confronto Manualmente" or not api_configurada:
         col_manual_1, col_manual_2 = st.columns(2)
         time_rival = col_manual_1.text_input("Adversário do Brasil:", "Haiti")
-        data_manual = col_manual_2.text_input("Data do Jogo:", "Hoje")
+        data_manual = col_manual_2.text_input("Data do Jogo:", datetime.now().strftime("%d/%m/%Y"))
         confronto_final = f"Brasil x {time_rival} ({data_manual})"
     else:
         confronto_final = escolha_partida
