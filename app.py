@@ -98,31 +98,30 @@ def salvar_banco_dados(novos_dados):
     except Exception as e:
         st.sidebar.warning(f"Erro de sincronização: {e}")
 
-# --- CHAMADA DO GEMINI COM BUSCA EM TEMPO REAL ---
+# --- CHAMADA DO GEMINI COM BUSCA EM TEMPO REAL (LIMITADO A 15 DIAS) ---
 @st.cache_data(ttl=1800)  # Guarda os jogos em cache por 30 minutos
 def puxar_proximos_jogos():
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     
-    # Calendário Real Base Atualizado para 2026 como fallback de segurança absoluto
+    # Calendário Real de Segurança de 2026 (Estritamente os próximos 15 dias da Copa do Mundo)
     fallback_jogos = [
         {"confronto": "Brasil x Haiti", "data": "19/06/2026"},
-        {"confronto": "Brasil x Escócia", "data": "24/06/2026"},
-        {"confronto": "Equador x Brasil", "data": "04/09/2026"},
-        {"confronto": "Brasil x Colômbia", "data": "10/09/2026"},
-        {"confronto": "Paraguai x Brasil", "data": "15/10/2026"}
+        {"confronto": "Brasil x Escócia", "data": "24/06/2026"}
     ]
     
     if not model:
         return fallback_jogos
         
     try:
+        # Prompt ultra direcionado para limitar a busca em 15 dias dentro da Copa do Mundo de 2026
         prompt = (
-            f"Hoje é dia {data_hoje}. Faça uma pesquisa no Google e traga a lista real dos próximos 3 jogos oficiais "
-            "ou amistosos da Seleção Brasileira de Futebol Masculino que acontecerão a partir de hoje. "
-            "Inclua os jogos iminentes como contra o Haiti (19/06/2026) e Escócia (24/06/2026). "
-            "Responda estritamente em formato JSON no padrão: "
-            "[{'confronto': 'Brasil x Haiti', 'data': '19/06/2026'}, {'confronto': 'Brasil x Escócia', 'data': '24/06/2026'}] "
-            "Não adicione nenhuma outra palavra, cabeçalho ou bloco markdown."
+            f"Hoje é dia {data_hoje} (junho de 2026). Faça uma pesquisa no Google e traga os jogos reais oficiais "
+            f"da Seleção Brasileira Masculina de Futebol na Copa do Mundo de 2026 agendados para os próximos 15 dias (de {data_hoje} até 04/07/2026). "
+            f"Ignore totalmente jogos de Eliminatórias de setembro ou outubro. Foque apenas em partidas reais da Copa de 2026 nesse intervalo de 15 dias, "
+            f"como o jogo de hoje contra o Haiti (19/06/2026) e o jogo contra a Escócia (24/06/2026). "
+            f"Responda estritamente em formato JSON no padrão: "
+            f"[{'confronto': 'Brasil x Adversario', 'data': 'DD/MM/2026'}] "
+            f"Não adicione nenhuma outra palavra, cabeçalho ou bloco markdown."
         )
         response = model.generate_content(prompt)
         texto = response.text.strip()
@@ -136,7 +135,21 @@ def puxar_proximos_jogos():
         
         resultado = json.loads(texto)
         if isinstance(resultado, list) and len(resultado) > 0:
-            return resultado
+            # Filtra novamente via código para garantir que nada passe de 15 dias caso o modelo falhe
+            jogos_filtrados = []
+            for jogo in resultado:
+                try:
+                    data_jogo = datetime.strptime(jogo['data'], "%d/%m/%Y")
+                    dias_diferenca = (data_jogo - datetime.now()).days
+                    if 0 <= dias_diferenca <= 15:
+                        jogos_filtrados.append(jogo)
+                except Exception:
+                    # Se houver erro de parsing na data, mantém como garantia se o formato estiver correto
+                    if "2026" in jogo['data'] and not any(m in jogo['data'] for m in ["09", "10", "11"]):
+                        jogos_filtrados.append(jogo)
+            
+            if jogos_filtrados:
+                return jogos_filtrados
         return fallback_jogos
     except Exception:
         return fallback_jogos
