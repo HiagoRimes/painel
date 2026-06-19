@@ -5,104 +5,93 @@ import json
 from datetime import datetime
 from fpdf import FPDF
 
-# Configuração da Página
-st.set_page_config(page_title="Bolão Seleção Brasileira ⚽", layout="wide")
+# --- CONFIGURAÇÃO VISUAL PREMIUM DA PÁGINA ---
+st.set_page_config(
+    page_title="Bolão Seleção Brasileira ⚽",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-# URL do banco de dados compartilhado
+st.markdown("""
+    <style>
+    [data-testid="collapsedControl"] { display: none; }
+    h1, h2, h3 { color: #009c3b !important; font-family: 'Helvetica Neue', sans-serif; }
+    .status-box { padding: 15px; border-radius: 8px; background-color: rgba(0, 156, 59, 0.15) !important; border-left: 5px solid #009c3b !important; margin-bottom: 15px; color: var(--text-color) !important; }
+    .stat-card { padding: 15px; border-radius: 8px; background-color: var(--secondary-background-color) !important; border: 1px solid rgba(128, 128, 128, 0.2) !important; text-align: center; box-shadow: 0px 2px 4px rgba(0,0,0,0.05); color: var(--text-color) !important; }
+    .stat-card strong { color: #009c3b !important; }
+    div[data-testid="stHorizontalBlock"] { background-color: var(--secondary-background-color); padding: 8px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(128, 128, 128, 0.2); }
+    .stButton>button { border-radius: 8px !important; font-weight: bold !important; transition: 0.3s !important; }
+    .stButton>button[data-testid="stBaseButton-secondary"] { background-color: var(--secondary-background-color) !important; color: var(--text-color) !important; border: 1px solid rgba(128, 128, 128, 0.4) !important; }
+    .stButton>button[data-testid="stBaseButton-primary"] { background-color: #002776 !important; color: white !important; border: 2px solid #ffdf00 !important; }
+    .stFormSubmitButton>button { background-color: #009c3b !important; color: white !important; border: none !important; border-radius: 8px !important; font-weight: bold !important; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- BANCO DE DADOS ---
 DATABASE_URL = "https://jsonblob.com/api/jsonBlob/1319022513903362048"
 
-# --- FUNÇÕES DE APOIO ---
-def carregar_dados():
+def carregar_banco():
     try:
         r = requests.get(DATABASE_URL, timeout=10)
         return r.json() if r.status_code == 200 else {}
     except: return {}
 
-def salvar_dados(dados):
-    try:
-        requests.put(DATABASE_URL, json=dados, timeout=10)
-        st.session_state.dados = dados
-    except Exception as e:
-        st.error(f"Erro ao salvar: {e}")
+def salvar_banco(dados):
+    requests.put(DATABASE_URL, json=dados, timeout=10)
+    st.session_state.dados = dados
 
-if "dados" not in st.session_state:
-    st.session_state.dados = carregar_dados()
+if "dados" not in st.session_state: st.session_state.dados = carregar_banco()
 
-# --- FUNÇÕES DE CÁLCULO E PDF ---
-def calcular_pontos(palpite, resultado_real):
-    try:
-        gp, gr = palpite.split(" x "), resultado_real.split(" x ")
-        if gp == gr: return 10
-        # Lógica de acerto de vencedor simplificada
-        return 3
-    except: return 0
+# --- NAVEGAÇÃO ---
+st.markdown("<h1 style='text-align: center;'>⚽ Bolão dos Amigos da Seleção</h1>", unsafe_allow_html=True)
+if "aba" not in st.session_state: st.session_state.aba = "🏆 Entrar & Apostar"
 
-def gerar_pdf(nome_grupo, apostas, resultado):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, f"Bolão: {nome_grupo}", ln=True, align="C")
-    pdf.set_font("Arial", '', 12)
-    for a in apostas:
-        pdf.cell(0, 10, f"{a['Nome']}: {a['Palpite']}", ln=True)
-    return pdf.output(dest='S')
+col1, col2, col3 = st.columns(3)
+if col1.button("🏆 Entrar & Apostar", use_container_width=True, type="primary" if st.session_state.aba=="🏆 Entrar & Apostar" else "secondary"): st.session_state.aba = "🏆 Entrar & Apostar"
+if col2.button("🛠️ Criar Novo Bolão", use_container_width=True, type="primary" if st.session_state.aba=="🛠️ Criar Novo Bolão" else "secondary"): st.session_state.aba = "🛠️ Criar Novo Bolão"
+if col3.button("📊 Ver Palpites & Download", use_container_width=True, type="primary" if st.session_state.aba=="📊 Ver Palpites & Download" else "secondary"): st.session_state.aba = "📊 Ver Palpites & Download"
 
-# --- INTERFACE ---
-st.title("⚽ Bolão da Seleção Brasileira")
-aba1, aba2, aba3 = st.tabs(["🏆 Apostar", "🛠️ Criar Bolão", "📊 Classificação"])
+st.markdown("---")
 
-# ABA 1: APOSTAR
-with aba1:
-    if not st.session_state.dados:
-        st.write("Crie um bolão na aba 'Criar Bolão' primeiro.")
+# --- LÓGICA DE EXECUÇÃO ---
+if st.session_state.aba == "🏆 Entrar & Apostar":
+    if not st.session_state.dados: st.warning("Crie um bolão primeiro.")
     else:
-        grupo = st.selectbox("Escolha o Bolão:", list(st.session_state.dados.keys()), key="sel_apostar")
+        grupo = st.selectbox("Selecione o Bolão:", list(st.session_state.dados.keys()))
+        detalhes = st.session_state.dados[grupo]
+        st.markdown(f"<div class='status-box'>📍 <strong>Bolão:</strong> {grupo} | ⚽ <strong>Jogo:</strong> {detalhes['jogo']}</div>", unsafe_allow_html=True)
+        
         with st.form("form_aposta"):
-            nome = st.text_input("Seu Nome")
-            br = st.number_input("Gols Brasil", 0, 10)
-            op = st.number_input("Gols Adversário", 0, 10)
-            if st.form_submit_button("Enviar Palpite"):
-                palpite = f"{br} x {op}"
-                if any(a['Nome'] == nome for a in st.session_state.dados[grupo]['apostas']):
-                    st.error("Você já deu seu palpite neste grupo!")
-                else:
-                    st.session_state.dados[grupo]['apostas'].append({"Nome": nome, "Palpite": palpite, "Data": datetime.now().strftime("%d/%m %H:%M")})
-                    salvar_dados(st.session_state.dados)
-                    st.success("Palpite registrado!")
+            nome = st.text_input("Seu Nome:")
+            c1, c2 = st.columns(2)
+            br = c1.number_input("Gols Brasil", 0, 10)
+            op = c2.number_input("Gols Adversário", 0, 10)
+            if st.form_submit_button("Confirmar Palpite"):
+                st.session_state.dados[grupo]['apostas'].append({"Nome": nome, "Palpite": f"{br} x {op}", "Data": datetime.now().strftime("%d/%m")})
+                salvar_banco(st.session_state.dados)
+                st.success("Palpite registrado!")
 
-# ABA 2: CRIAR BOLÃO
-with aba2:
-    nome_bolao = st.text_input("Nome do Novo Bolão")
+elif st.session_state.aba == "🛠️ Criar Novo Bolão":
+    nome = st.text_input("Nome do Grupo:")
     jogo = st.selectbox("Jogo:", ["Brasil x Haiti", "Brasil x Escócia"])
-    if st.button("🚀 Criar este Bolão", key="btn_criar_completo"):
-        if nome_bolao in st.session_state.dados:
-            st.error("Nome já existe!")
-        else:
-            st.session_state.dados[nome_bolao] = {"jogo": jogo, "apostas": [], "resultado": ""}
-            salvar_dados(st.session_state.dados)
-            st.rerun()
+    if st.button("🚀 Criar este Bolão"):
+        st.session_state.dados[nome] = {"jogo": jogo, "apostas": [], "resultado": ""}
+        salvar_banco(st.session_state.dados)
+        st.success("Bolão criado!")
 
-# ABA 3: RESULTADOS
-with aba3:
-    if st.session_state.dados:
-        grupo = st.selectbox("Escolha o Bolão:", list(st.session_state.dados.keys()), key="sel_res")
-        st.write(f"Palpites para {grupo}:")
+elif st.session_state.aba == "📊 Ver Palpites & Download":
+    if not st.session_state.dados: st.info("Nada a exibir.")
+    else:
+        grupo = st.selectbox("Selecione o grupo:", list(st.session_state.dados.keys()))
         df = pd.DataFrame(st.session_state.dados[grupo]['apostas'])
         if not df.empty:
             st.table(df)
-            if st.button("📥 Baixar PDF"):
-                pdf_bin = gerar_pdf(grupo, st.session_state.dados[grupo]['apostas'], "")
-                st.download_button("Clique aqui para baixar", pdf_bin, "bolao.pdf")
-        
-        # Admin Simples
-        if st.checkbox("Painel Admin"):
-            res = st.text_input("Definir Resultado (ex: 2 x 0)")
-            if st.button("Salvar Resultado"):
-                st.session_state.dados[grupo]['resultado'] = res
-                salvar_dados(st.session_state.dados)
-                st.rerun()
+            if st.checkbox("🔑 Administrar"):
+                res = st.text_input("Resultado Real:")
+                if st.button("Salvar Resultado"):
+                    st.session_state.dados[grupo]['resultado'] = res
+                    salvar_banco(st.session_state.dados)
 
-# Rodapé de Compartilhamento
-st.markdown("---")
-link_msg = f"Aposte no meu bolão! Acesse: https://bolaodobrasil.streamlit.app/"
-st.link_button("📲 Convidar amigos via WhatsApp", f"https://api.whatsapp.com/send?text={requests.utils.quote(link_msg)}")
+# --- COMPARTILHAMENTO ---
+link = "https://bolaodobrasil.streamlit.app/"
+st.link_button("📲 Convidar amigos no WhatsApp", f"https://api.whatsapp.com/send?text=Participe do meu Bolão! {link}")
