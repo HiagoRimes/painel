@@ -10,12 +10,17 @@ from fpdf import FPDF
 st.set_page_config(
     page_title="Bolão Seleção Brasileira ⚽",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"  # Força a barra lateral a ficar recolhida/oculta
 )
 
 # Estilização CSS precisa para separar as cores dos botões selecionados, normais e de formulário
 st.markdown("""
     <style>
+    /* Oculta completamente o botão de abrir a barra lateral do Streamlit para máxima segurança */
+    [data-testid="collapsedControl"] {
+        display: none;
+    }
+    
     .main {
         background-color: #f7f9fa;
     }
@@ -139,7 +144,7 @@ def salvar_banco_dados(novos_dados):
         headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
         requests.put(DATABASE_URL, json=novos_dados, headers=headers, timeout=8)
     except Exception as e:
-        st.sidebar.warning(f"Erro de sincronização: {e}")
+        st.toast(f"⚠️ Erro de sincronização com a nuvem: {e}")
 
 # --- GERADOR DE RELATÓRIO EM PDF ---
 def gerar_pdf_bolao(nome_grupo, confronto, apostas):
@@ -442,18 +447,3 @@ elif st.session_state.aba_ativa == "📊 Ver Palpites & Download":
             st.info("Nenhum palpite registado nesta sala ainda. Seja o primeiro a apostar!")
     else:
         st.warning("Nenhum bolão ativo registado no sistema.")
-
-# --- BARRA LATERAL ---
-st.sidebar.markdown("### ⚙️ Informações da API")
-if api_configurada and model:
-    st.sidebar.write(f"**Modelo Ativo:** {model.model_name}")
-    st.sidebar.success("Busca do Google Ativada")
-else:
-    st.sidebar.warning("API inativa (modo manual ativo)")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🗑️ Zona de Limpeza")
-if st.sidebar.button("Limpar Todos os Bolões (Zerar Sistema)"):
-    salvar_banco_dados({})
-    st.sidebar.success("Sistema zerado com sucesso!")
-    st.rerun()
