@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilização CSS personalizada nas cores do Brasil (Verde, Amarelo e Azul)
+# Estilização CSS precisa para separar as cores dos botões selecionados, normais e de formulário
 st.markdown("""
     <style>
     .main {
@@ -23,19 +23,7 @@ st.markdown("""
         color: #009c3b !important;
         font-family: 'Helvetica Neue', sans-serif;
     }
-    /* Botões Padrão (Verde) */
-    .stButton>button {
-        background-color: #009c3b;
-        color: white !important;
-        border-radius: 8px;
-        font-weight: bold;
-        border: none;
-        transition: 0.3s;
-    }
-    .stButton>button:hover {
-        background-color: #ffdf00;
-        color: #002776 !important;
-    }
+    
     /* Caixa de status do bolão ativo */
     .status-box {
         padding: 15px;
@@ -44,6 +32,7 @@ st.markdown("""
         border-left: 5px solid #009c3b;
         margin-bottom: 15px;
     }
+    
     /* Estilização para as pílulas de navegação superior */
     div[data-testid="stHorizontalBlock"] {
         background-color: #f0f2f6;
@@ -52,18 +41,51 @@ st.markdown("""
         margin-bottom: 20px;
     }
     
-    /* --- CSS PARA DESTACAR O BALÃO SELECIONADO NA COR AZUL --- */
-    /* Seletor focado nas chaves de pílulas ativas */
-    div[data-testid="stForm"] + div, div.element-container {
-        /* Alvo para customizações específicas se necessário */
+    /* --- CONFIGURAÇÃO INTELIGENTE DE CORES DOS BOTÕES --- */
+    
+    /* Todos os botões do Streamlit compartilham esta base */
+    .stButton>button {
+        border-radius: 8px !important;
+        font-weight: bold !important;
+        transition: 0.3s !important;
     }
     
-    /* Quando o botão é marcado com a classe da pílula ativa */
-    button[pills-active="true"] {
-        background-color: #002776 !important;
-        color: #ffffff !important;
-        border: 2px solid #ffdf00 !important;
-        box-shadow: 0px 4px 10px rgba(0, 39, 118, 0.3);
+    /* 1. Botões Secundários (NÃO SELECIONADOS - Cinza Claro Elegante) */
+    .stButton>button[data-testid="stBaseButton-secondary"] {
+        background-color: #f0f2f6 !important;
+        color: #31333F !important;
+        border: 1px solid #d3d3d3 !important;
+    }
+    .stButton>button[data-testid="stBaseButton-secondary"]:hover {
+        background-color: #e0e2e6 !important;
+        color: #002776 !important;
+        border: 1px solid #002776 !important;
+    }
+    
+    /* 2. Botões Primários (SELECIONADOS ATIVOS - Azul Royal com Borda Amarela) */
+    .stButton>button[data-testid="stBaseButton-primary"] {
+        background-color: #002776 !important; /* Azul Royal */
+        color: white !important;
+        border: 2px solid #ffdf00 !important; /* Borda amarela da seleção */
+        box-shadow: 0px 4px 10px rgba(0, 39, 118, 0.3) !important;
+    }
+    .stButton>button[data-testid="stBaseButton-primary"]:hover {
+        background-color: #001f5c !important;
+        color: #ffdf00 !important;
+    }
+    
+    /* 3. Botões de Enviar Formulário (Ação de Apostar - Verde Clássico) */
+    .stFormSubmitButton>button {
+        background-color: #009c3b !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: bold !important;
+        box-shadow: 0px 4px 10px rgba(0, 156, 59, 0.2) !important;
+    }
+    .stFormSubmitButton>button:hover {
+        background-color: #ffdf00 !important;
+        color: #002776 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -124,7 +146,6 @@ def gerar_pdf_bolao(nome_grupo, confronto, apostas):
     pdf = FPDF()
     pdf.add_page()
     
-    # Configurações de página e fontes padrão Helvetica
     pdf.set_text_color(0, 156, 59) # Verde Seleção
     pdf.set_font("Helvetica", "B", 18)
     pdf.cell(0, 15, "BOLAO DA SELECAO BRASILEIRA", ln=True, align="C")
@@ -140,26 +161,24 @@ def gerar_pdf_bolao(nome_grupo, confronto, apostas):
     pdf.ln(10)
     
     # Cabeçalho da Tabela
-    pdf.set_fill_color(0, 156, 59) # Verde de Fundo
-    pdf.set_text_color(255, 255, 255) # Texto Branco
+    pdf.set_fill_color(0, 156, 59)
+    pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(80, 10, " Nome do Apostador", border=1, fill=True)
     pdf.cell(40, 10, " Palpite", border=1, fill=True, align="C")
     pdf.cell(60, 10, " Data/Hora Registro", border=1, fill=True, align="C")
     pdf.ln()
     
-    # Linhas de Apostas
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Helvetica", "", 10)
     
     color_toggle = False
     for aposta in apostas:
         if color_toggle:
-            pdf.set_fill_color(240, 248, 240) # Alternar cor de fundo suave
+            pdf.set_fill_color(240, 248, 240)
         else:
             pdf.set_fill_color(255, 255, 255)
             
-        # Normaliza textos para evitar quebra de codificação no PDF
         nome = aposta.get("Nome", "").encode('latin-1', 'replace').decode('latin-1')
         palpite = aposta.get("Palpite", "").encode('latin-1', 'replace').decode('latin-1')
         data_reg = aposta.get("Data Registro", "").encode('latin-1', 'replace').decode('latin-1')
@@ -177,7 +196,6 @@ def gerar_pdf_bolao(nome_grupo, confronto, apostas):
 def puxar_proximos_jogos():
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     
-    # Calendário Real de Segurança de 2026 (Estritamente os próximos 15 dias da Copa do Mundo)
     fallback_jogos = [
         {"confronto": "Brasil x Haiti", "data": "19/06/2026"},
         {"confronto": "Brasil x Escócia", "data": "24/06/2026"}
@@ -283,18 +301,13 @@ if st.session_state.aba_ativa == "🏆 Entrar & Apostar":
         for i, grupo in enumerate(lista_grupos):
             with cols_pills[i % len(cols_pills)]:
                 is_selected = (st.session_state.grupo_selecionado_padrao == grupo)
+                tipo_balao = "primary" if is_selected else "secondary"
+                label = f"🔵 {grupo}" if is_selected else f"⚪ {grupo}"
                 
-                # --- HACK DE ESTILIZAÇÃO DINÂMICA ---
-                # Usamos st.markdown com HTML customizado e o botão do Streamlit para aplicar CSS de forma limpa.
-                # Se o botão estiver ativo, nós injetamos o atributo Customizado de CSS
-                if is_selected:
-                    st.markdown('<div style="margin-bottom: -43px;"></div>', unsafe_allow_html=True)
-                    if st.button(f"🔵 {grupo}", key=f"pill_sel_{grupo}", use_container_width=True, type="primary"):
-                        pass
-                else:
-                    if st.button(f"⚪ {grupo}", key=f"pill_sel_{grupo}", use_container_width=True, type="secondary"):
-                        st.session_state.grupo_selecionado_padrao = grupo
-                        st.rerun()
+                # Clique no balão muda a seleção e atualiza a tela na hora
+                if st.button(label, key=f"pill_sel_{grupo}", use_container_width=True, type=tipo_balao):
+                    st.session_state.grupo_selecionado_padrao = grupo
+                    st.rerun()
                     
         grupo_chosen = st.session_state.grupo_selecionado_padrao
         detalhes_grupo = dados_bolao[grupo_chosen]
@@ -395,15 +408,12 @@ elif st.session_state.aba_ativa == "📊 Ver Palpites & Download":
         for i, grupo in enumerate(lista_opcoes_resumo):
             with cols_pills_resumo[i % len(cols_pills_resumo)]:
                 is_selected_res = (st.session_state.grupo_selecionado_padrao == grupo)
+                tipo_balao_res = "primary" if is_selected_res else "secondary"
+                label_res = f"📊 {grupo}" if is_selected_res else f"⚪ {grupo}"
                 
-                if is_selected_res:
-                    st.markdown('<div style="margin-bottom: -43px;"></div>', unsafe_allow_html=True)
-                    if st.button(f"📊 {grupo}", key=f"pill_res_{grupo}", use_container_width=True, type="primary"):
-                        pass
-                else:
-                    if st.button(f"⚪ {grupo}", key=f"pill_res_{grupo}", use_container_width=True, type="secondary"):
-                        st.session_state.grupo_selecionado_padrao = grupo
-                        st.rerun()
+                if st.button(label_res, key=f"pill_res_{grupo}", use_container_width=True, type=tipo_balao_res):
+                    st.session_state.grupo_selecionado_padrao = grupo
+                    st.rerun()
                     
         grupo_resumo = st.session_state.grupo_selecionado_padrao
         dados_do_grupo = dados_bolao[grupo_resumo]
