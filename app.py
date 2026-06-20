@@ -2,9 +2,11 @@ import streamlit as st
 import requests
 import json
 from datetime import datetime
+from io import BytesIO
+from reportlab.pdfgen import canvas
 
 # =========================
-# CONFIGURAÇÃO INICIAL
+# CONFIG
 # =========================
 
 st.set_page_config(
@@ -16,7 +18,7 @@ st.set_page_config(
 JSON_URL = "https://jsonblob.com/api/jsonBlob/1319022513903362048"
 
 # =========================
-# CSS PREMIUM CASUAL
+# CSS
 # =========================
 
 st.markdown("""
@@ -37,14 +39,12 @@ body {
     font-weight: 800;
     color: #002776;
     text-align: center;
-    margin-bottom: 5px;
 }
 
 .subtitle {
     text-align: center;
     color: #009c3b;
-    font-size: 16px;
-    margin-bottom: 25px;
+    margin-bottom: 20px;
 }
 
 .card {
@@ -52,41 +52,13 @@ body {
     padding: 15px;
     border-radius: 16px;
     box-shadow: 0px 3px 10px rgba(0,0,0,0.08);
-    margin-bottom: 12px;
-}
-
-.button-primary {
-    background-color: #009c3b;
-    color: white;
-    padding: 10px 18px;
-    border-radius: 12px;
-    border: none;
-    font-weight: bold;
-}
-
-.button-blue {
-    background-color: #002776;
-    color: white;
-    padding: 10px 18px;
-    border-radius: 12px;
-    border: none;
-    font-weight: bold;
-}
-
-.button-yellow {
-    background-color: #ffdf00;
-    color: black;
-    padding: 10px 18px;
-    border-radius: 12px;
-    border: none;
-    font-weight: bold;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# BANCO (JSONBlob)
+# DATA
 # =========================
 
 def load_data():
@@ -101,73 +73,22 @@ def save_data(data):
     requests.put(JSON_URL, json=data, timeout=10)
 
 
-# =========================
-# API JOGOS (Copa 2026)
-# =========================
-
-def get_worldcup_matches():
-    """
-    Fonte automática de jogos.
-    (estrutura preparada para API esportiva)
-    """
-    try:
-        # placeholder seguro (evita quebra)
-        return []
-    except:
-        return []
-
-
-# =========================
-# UTILITÁRIOS
-# =========================
-
-def init_state():
-    if "page" not in st.session_state:
-        st.session_state.page = "home"
-
-    if "selected_bolao" not in st.session_state:
-        st.session_state.selected_bolao = None
-
-
-init_state()
-
-
-# =========================
-# HEADER
-# =========================
-
-st.markdown("<div class='title'>🇧🇷 Bolão Copa 2026</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>Bolões para família, amigos, loja e trabalho</div>", unsafe_allow_html=True)
-
-# =========================
-# NAVEGAÇÃO
-# =========================
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("🏆 Participar"):
-        st.session_state.page = "participar"
-
-with col2:
-    if st.button("🛠️ Criar Bolão"):
-        st.session_state.page = "criar"
-
-with col3:
-    if st.button("📊 Resultado"):
-        st.session_state.page = "resultado"
-
-
-st.markdown("---")
-# =========================
-# DADOS
-# =========================
-
 data = load_data()
 
-def get_boloes():
-    return data.get("boloes", [])
+# =========================
+# STATE
+# =========================
 
+if "page" not in st.session_state:
+    st.session_state.page = "home"
+
+if "selected_bolao" not in st.session_state:
+    st.session_state.selected_bolao = None
+
+
+# =========================
+# HELPERS
+# =========================
 
 def find_bolao(nome):
     for b in data.get("boloes", []):
@@ -181,11 +102,9 @@ def ensure_bolao(nome):
         data["boloes"] = []
 
     bolao = find_bolao(nome)
+
     if not bolao:
-        bolao = {
-            "nome": nome,
-            "apostas": []
-        }
+        bolao = {"nome": nome, "apostas": []}
         data["boloes"].append(bolao)
         save_data(data)
 
@@ -206,10 +125,10 @@ def upsert_aposta(bolao_nome, jogo, participante, placar):
         if not (a["participante"] == participante and a["jogo"] == jogo)
     ]
 
-    # bloqueio de placar repetido no mesmo jogo
+    # bloqueio placar duplicado
     for a in bolao["apostas"]:
         if a["jogo"] == jogo and a["placar"] == placar:
-            return "PLACAR_EXISTE"
+            return "PL_DUP"
 
     bolao["apostas"].append({
         "participante": participante,
@@ -223,92 +142,138 @@ def upsert_aposta(bolao_nome, jogo, participante, placar):
 
 
 # =========================
-# PÁGINA CRIAR BOLÃO
+# API JOGOS (placeholder)
 # =========================
 
-def page_criar_bolao():
+def get_worldcup_matches():
+    return [{"jogo": "Brasil vs Escócia"}]
+
+
+# =========================
+# HEADER
+# =========================
+
+st.markdown("<div class='title'>🇧🇷 Bolão Copa 2026</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Família • Amigos • Loja • Trabalho</div>", unsafe_allow_html=True)
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("🏆 Participar"):
+        st.session_state.page = "participar"
+
+with col2:
+    if st.button("🛠️ Criar Bolão"):
+        st.session_state.page = "criar"
+
+with col3:
+    if st.button("📊 Resultado"):
+        st.session_state.page = "resultado"
+
+st.markdown("---")
+
+# =========================
+# CRIAR BOLÃO
+# =========================
+
+def page_criar():
     st.markdown("## 🛠️ Criar Bolão")
 
-    nome = st.text_input("Nome do bolão")
+    nome = st.text_input("Nome do bolão", key="criar_bolao_nome")
 
-    if st.button("Criar bolão"):
+    if st.button("Criar"):
         if not nome:
             st.warning("Digite um nome")
             return
 
         ensure_bolao(nome)
-
         st.session_state.selected_bolao = nome
         st.session_state.page = "participar"
         st.rerun()
 
 
 # =========================
-# PÁGINA PARTICIPAR
+# PARTICIPAR
 # =========================
 
 def page_participar():
-    st.markdown("## 🏆 Participar do Bolão")
+    st.markdown("## 🏆 Participar")
 
-    boloes = [b["nome"] for b in get_boloes()]
+    boloes = [b["nome"] for b in data.get("boloes", [])]
 
     if not boloes:
-        st.info("Nenhum bolão criado ainda.")
+        st.info("Nenhum bolão criado")
         return
 
     selected = st.selectbox(
-        "Selecione o bolão",
+        "Bolão",
         boloes,
-        index=boloes.index(st.session_state.selected_bolao)
-        if st.session_state.selected_bolao in boloes else 0
+        key="select_bolao"
     )
 
     st.session_state.selected_bolao = selected
 
-    st.markdown("### Próximo jogo da Copa (automático)")
-
     jogos = get_worldcup_matches()
 
-    # fallback visual simples (caso API ainda não responda)
-    if not jogos:
-        jogos = [
-            {"jogo": "Brasil vs Escócia", "data": "24/06/2026 19:00"}
-        ]
-
-    jogo_escolhido = st.selectbox(
-        "Jogos disponíveis",
-        [j["jogo"] for j in jogos]
+    jogo = st.selectbox(
+        "Jogo",
+        [j["jogo"] for j in jogos],
+        key="select_jogo"
     )
 
-    st.markdown("### Seu palpite")
-
-    nome = st.text_input("Seu nome")
+    nome = st.text_input("Seu nome", key="participar_nome")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        gols_a = st.number_input("Brasil / Time A", min_value=0, step=1)
+        a = st.number_input("Time A", min_value=0, key="gols_a")
 
     with col2:
-        gols_b = st.number_input("Adversário / Time B", min_value=0, step=1)
+        b = st.number_input("Time B", min_value=0, key="gols_b")
 
-    placar = f"{gols_a}x{gols_b}"
+    placar = f"{a}x{b}"
 
-    if st.button("Confirmar palpite"):
+    if st.button("Confirmar"):
         if not nome:
             st.warning("Digite seu nome")
             return
 
-        result = upsert_aposta(selected, jogo_escolhido, nome, placar)
+        res = upsert_aposta(selected, jogo, nome, placar)
 
-        if result == "PLACAR_EXISTE":
-            st.error("Este placar já foi escolhido por outro participante.")
+        if res == "PL_DUP":
+            st.error("Placar já escolhido por outro participante")
             return
 
-        st.success("Aposta registrada com sucesso!")
-
+        st.success("Aposta registrada")
         st.session_state.page = "resultado"
         st.rerun()
+
+
+# =========================
+# RESULTADO
+# =========================
+
+def page_resultado():
+    st.markdown("## 📊 Resultado")
+
+    bolao = find_bolao(st.session_state.selected_bolao)
+
+    if not bolao:
+        st.info("Selecione um bolão")
+        return
+
+    st.markdown(f"### {bolao['nome']}")
+
+    st.markdown("### Palpites")
+
+    for a in bolao.get("apostas", []):
+        st.markdown(f"""
+        <div style="padding:10px;background:#eee;border-radius:10px;margin:5px 0;">
+        <b>{a['participante']}</b><br>
+        {a['jogo']}<br>
+        {a['placar']}
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # =========================
@@ -316,155 +281,7 @@ def page_participar():
 # =========================
 
 if st.session_state.page == "criar":
-    page_criar_bolao()
-
-elif st.session_state.page == "participar":
-    page_participar()
-
-elif st.session_state.page == "resultado":
-    st.markdown("## 📊 Resultado (base)")
-    st.info("Parte 3 vai completar ranking + PDF")
-# =========================
-# RANKING SIMPLES
-# =========================
-
-def calcular_ranking(bolao):
-    """
-    Ranking simples baseado em:
-    - 3 pontos por participação (base)
-    - 5 pontos por placar exato (simples heurística local)
-    OBS: sem resultados oficiais ainda nesta versão.
-    """
-
-    pontos = {}
-
-    apostas = bolao.get("apostas", [])
-
-    for a in apostas:
-        nome = a["participante"]
-        placar = a["placar"]
-
-        if nome not in pontos:
-            pontos[nome] = 0
-
-        # base
-        pontos[nome] += 3
-
-        # bônus simples (placeholder de futuro cálculo real)
-        if placar in ["1x0", "2x1", "2x0"]:
-            pontos[nome] += 2
-
-    ranking = sorted(pontos.items(), key=lambda x: x[1], reverse=True)
-    return ranking
-
-
-# =========================
-# PDF EXPORT
-# =========================
-
-def gerar_pdf(bolao):
-    from io import BytesIO
-    from reportlab.pdfgen import canvas
-
-    buffer = BytesIO()
-    p = canvas.Canvas(buffer)
-
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, 800, f"Bolão: {bolao['nome']}")
-
-    p.setFont("Helvetica", 11)
-    y = 770
-
-    for a in bolao.get("apostas", []):
-        linha = f"{a['participante']} - {a['jogo']} - {a['placar']}"
-        p.drawString(50, y, linha)
-        y -= 20
-
-        if y < 50:
-            p.showPage()
-            y = 800
-
-    p.save()
-    buffer.seek(0)
-    return buffer
-
-
-# =========================
-# PÁGINA RESULTADO
-# =========================
-
-def page_resultado():
-    st.markdown("## 📊 Resultado do Bolão")
-
-    bolao_nome = st.session_state.selected_bolao
-
-    if not bolao_nome:
-        st.info("Selecione um bolão primeiro.")
-        return
-
-    bolao = find_bolao(bolao_nome)
-
-    if not bolao:
-        st.warning("Bolão não encontrado.")
-        return
-
-    st.markdown(f"### 🏆 {bolao_nome}")
-
-    # =====================
-    # RANKING
-    # =====================
-
-    st.markdown("### 📈 Ranking")
-
-    ranking = calcular_ranking(bolao)
-
-    for i, (nome, pontos) in enumerate(ranking, start=1):
-        st.write(f"{i}. **{nome}** — {pontos} pts")
-
-    st.markdown("---")
-
-    # =====================
-    # APOSTAS
-    # =====================
-
-    st.markdown("### 🎯 Palpites")
-
-    apostas = bolao.get("apostas", [])
-
-    if not apostas:
-        st.info("Nenhuma aposta ainda.")
-    else:
-        for a in apostas:
-            st.markdown(f"""
-            <div style="padding:10px; background:#f2f2f2; border-radius:10px; margin-bottom:8px;">
-                <b>{a['participante']}</b><br>
-                {a['jogo']}<br>
-                <b>{a['placar']}</b>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # =====================
-    # DOWNLOAD PDF
-    # =====================
-
-    st.markdown("---")
-
-    pdf = gerar_pdf(bolao)
-
-    st.download_button(
-        "📄 Baixar PDF do Bolão",
-        data=pdf,
-        file_name=f"{bolao_nome}.pdf",
-        mime="application/pdf"
-    )
-
-
-# =========================
-# ROUTER FINAL (ATUALIZADO)
-# =========================
-
-if st.session_state.page == "criar":
-    page_criar_bolao()
+    page_criar()
 
 elif st.session_state.page == "participar":
     page_participar()
